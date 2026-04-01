@@ -1,0 +1,90 @@
+{
+  "participantes": {
+    "ROBERTO": {
+      "clave": "123456",
+      "favoritos_guardados": [],
+      "pronosticos_guardados": [],
+      "fecha_envio": null,
+      "fecha_envio_iso": null,
+      "envios_por_fase": {}
+    },
+    "FERNANDA": {
+      "clave": "123456",
+      "favoritos_guardados": [],
+      "pronosticos_guardados": [],
+      "fecha_envio": null,
+      "fecha_envio_iso": null,
+      "envios_por_fase": {}
+    },
+    "ALE": {
+      "clave": "123456",
+      "favoritos_guardados": [],
+      "pronosticos_guardados": [],
+      "fecha_envio": null,
+      "fecha_envio_iso": null,
+      "envios_por_fase": {}
+    },
+    "OMAR": {
+      "clave": "123456",
+      "favoritos_guardados": [
+        "A4",
+        "Alemania"
+      ],
+      "pronosticos_guardados": [
+        {
+          "id": 5,
+          "marcador_local": 0,
+          "marcador_visitante": 0
+        },
+        {
+          "id": 7,
+          "marcador_local": 0,
+          "marcador_visitante": 0
+        },
+        {
+          "id": 29,
+          "marcador_local": 0,
+          "marcador_visitante": 0
+        },
+        {
+          "id": 30,
+          "marcador_local": 0,
+          "marcador_visitante": 0
+        },
+        {
+          "id": 49,
+          "marcador_local": 0,
+          "marcador_visitante": 0
+        },
+        {
+          "id": 50,
+          "marcador_local": 0,
+          "marcador_visitante": 0
+        }
+      ],
+      "fecha_envio": "01/04/2026 11:21",
+      "fecha_envio_iso": "2026-04-01T11:21:15.075459",
+      "envios_por_fase": {
+        "Fase de grupos": {
+          "fecha_envio": "01/04/2026 11:21",
+          "fecha_envio_iso": "2026-04-01T11:21:15.075459",
+          "grupo": "Grupo C"
+        }
+      }
+    },
+    "RODRIGO": {
+      "clave": "123456",
+      "favoritos_guardados": [],
+      "pronosticos_guardados": [],
+      "fecha_envio": null,
+      "fecha_envio_iso": null,
+      "envios_por_fase": {}
+    }
+  },
+  "resultados_oficiales": {
+    "2": {
+      "marcador_local": 0,
+      "marcador_visitante": 1
+    }
+  }
+}
