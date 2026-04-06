@@ -2284,4 +2284,4 @@ elif menu == "Tabla general":
                 else:
                     st.dataframe(pronosticos_participante_df, use_container_width=True, hide_index=True)
 
-Update quiniela version final UI
+
