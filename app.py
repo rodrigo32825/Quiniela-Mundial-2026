@@ -61,10 +61,9 @@ def aplicar_estilo_global():
         .stApp {{
             background:
                 linear-gradient(135deg,
-                    #FFFFFF 0%,
-                    #F7F7F7 11%,
-                    #C62828 42%,
-                    #0B5E3C 100%
+                    #071F18 0%,
+                    #0E3B2E 38%,
+                    #050505 100%
                 );
             color: {COLOR_TEXTO_OSCURO};
         }}
@@ -190,10 +189,9 @@ def aplicar_estilo_global():
         .quiniela-hero {{
             background:
                 linear-gradient(135deg,
-                    rgba(255,255,255,0.78) 0%,
-                    rgba(255,255,255,0.55) 18%,
-                    rgba(198,40,40,0.22) 50%,
-                    rgba(11,94,60,0.30) 100%);
+                    rgba(14,59,46,0.88) 0%,
+                    rgba(10,18,14,0.94) 55%,
+                    rgba(5,5,5,0.97) 100%);
             border: 1px solid rgba(255,255,255,0.55);
             border-radius: 26px;
             padding: 1.7rem 2rem 1.45rem 2rem;
@@ -324,6 +322,9 @@ if "participante_actual" not in st.session_state:
 
 if "participante_autenticado" not in st.session_state:
     st.session_state.participante_autenticado = False
+
+if "panel_login_abierto" not in st.session_state:
+    st.session_state.panel_login_abierto = False
 
 # =========================================================
 # UTILIDADES VISUALES
@@ -661,6 +662,9 @@ def construir_historial_envios_df(participante_data):
 # =========================================================
 def estructura_base():
     return {
+        "configuracion": {
+            "mostrar_pronosticos_publicos": False
+        },
         "participantes": {},
         "resultados_oficiales": {}
     }
@@ -686,6 +690,12 @@ def cargar_db():
             db = json.load(f)
     except Exception:
         return estructura_base()
+
+    if "configuracion" not in db or not isinstance(db["configuracion"], dict):
+        db["configuracion"] = {"mostrar_pronosticos_publicos": False}
+
+    if "mostrar_pronosticos_publicos" not in db["configuracion"]:
+        db["configuracion"]["mostrar_pronosticos_publicos"] = False
 
     if "participantes" not in db:
         db["participantes"] = {}
@@ -725,6 +735,32 @@ def obtener_participantes():
 
 def obtener_resultados_oficiales():
     return st.session_state.db["resultados_oficiales"]
+
+
+def obtener_configuracion():
+    return st.session_state.db["configuracion"]
+
+
+def pronosticos_publicos_habilitados():
+    return bool(obtener_configuracion().get("mostrar_pronosticos_publicos", False))
+
+
+def usuario_puede_ver_detalle_participante(nombre_participante: str):
+    if st.session_state.admin_autenticado:
+        return True
+    if pronosticos_publicos_habilitados():
+        return True
+    if st.session_state.participante_autenticado and st.session_state.participante_actual == nombre_participante:
+        return True
+    return False
+
+
+def seleccion_es_participante_ajeno(nombre_participante: str):
+    if st.session_state.admin_autenticado:
+        return False
+    if not st.session_state.participante_autenticado:
+        return True
+    return st.session_state.participante_actual != nombre_participante
 
 # =========================================================
 # RESETEOS Y LIMPIEZA
@@ -1219,37 +1255,34 @@ def construir_tabla_general():
     for nombre, participante_data in participantes.items():
         stats = estadisticas_participante(nombre, participante_data)
         filas.append({
-            "Participante": stats["Participante"],
-            "Número de marcadores exactos": stats["Marcadores exactos"],
-            "Número de aciertos de resultado": stats["Aciertos de resultado"],
-            "Puntos Base ganados": stats["Puntos base"],
-            "Puntos por favoitos": stats["Bonus favoritos"],
-            "Total Puntos ganados": stats["Puntos ganados"],
-            "_desempate_exactos": stats["Marcadores exactos"],
-            "_desempate_resultados": stats["Aciertos de resultado"],
-            "_desempate_eliminacion": stats["Puntos eliminación directa"],
-            "_desempate_fases_finales": stats["Puntos fases finales"],
+            "Participante": str(stats["Participante"]),
+            "Puntos Base ganados": int(stats["Puntos base"]),
+            "Puntos por favoitos": int(stats["Bonus favoritos"]),
+            "Total Puntos ganados": int(stats["Puntos ganados"]),
+            "_desempate_exactos": int(stats["Marcadores exactos"]),
+            "_desempate_resultados": int(stats["Aciertos de resultado"]),
+            "_desempate_eliminacion": int(stats["Puntos eliminación directa"]),
+            "_desempate_fases_finales": int(stats["Puntos fases finales"]),
             "_desempate_fecha": stats["_fecha_envio_dt"],
         })
 
     if not filas:
         return pd.DataFrame()
 
-    tabla_df = pd.DataFrame(filas)
+    filas_ordenadas = sorted(
+        filas,
+        key=lambda x: (
+            -x["Total Puntos ganados"],
+            -x["_desempate_exactos"],
+            -x["_desempate_resultados"],
+            -x["_desempate_eliminacion"],
+            -x["_desempate_fases_finales"],
+            x["_desempate_fecha"],
+            x["Participante"].lower()
+        )
+    )
 
-    tabla_df = tabla_df.sort_values(
-        by=[
-            "Total Puntos ganados",
-            "_desempate_exactos",
-            "_desempate_resultados",
-            "_desempate_eliminacion",
-            "_desempate_fases_finales",
-            "_desempate_fecha",
-            "Participante"
-        ],
-        ascending=[False, False, False, False, False, True, True]
-    ).reset_index(drop=True)
-
+    tabla_df = pd.DataFrame(filas_ordenadas).reset_index(drop=True)
     tabla_df.insert(0, "Posición", range(1, len(tabla_df) + 1))
 
     columnas_visibles = [
@@ -1374,14 +1407,120 @@ def mostrar_favoritos_participante(participante_data):
         col2.markdown(f"<span class='texto-dorado'><b>{puntos_favoritos.get(equipo, 0)} pts</b></span>", unsafe_allow_html=True)
         col3.markdown(f"<span class='{clase_estado}'>{estado}</span>", unsafe_allow_html=True)
 
+def cerrar_toda_sesion():
+    st.session_state.admin_autenticado = False
+    st.session_state.participante_actual = ""
+    st.session_state.participante_autenticado = False
+    st.session_state.panel_login_abierto = False
+
+
+def mostrar_barra_superior_acceso():
+    col_izq, col_der = st.columns([6, 1.35])
+
+    with col_izq:
+        if st.session_state.admin_autenticado:
+            st.markdown('<div style="padding-top:0.35rem; color: rgba(255,255,255,0.92); font-weight:700;">Panel activo: <span class="texto-dorado">Administrador</span></div>', unsafe_allow_html=True)
+        elif st.session_state.participante_autenticado:
+            st.markdown(f'<div style="padding-top:0.35rem; color: rgba(255,255,255,0.92); font-weight:700;">Panel activo: <span class="texto-dorado">{st.session_state.participante_actual}</span></div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div style="padding-top:0.35rem; color: rgba(255,255,255,0.82);">Acceso a participante o administrador</div>', unsafe_allow_html=True)
+
+    with col_der:
+        if st.session_state.admin_autenticado or st.session_state.participante_autenticado:
+            if st.button("Cerrar sesión", use_container_width=True, key="boton_cerrar_sesion_superior"):
+                cerrar_toda_sesion()
+                st.rerun()
+        else:
+            if st.button("Inicio de sesión", use_container_width=True, key="boton_inicio_sesion_superior"):
+                st.session_state.panel_login_abierto = not st.session_state.panel_login_abierto
+                st.rerun()
+
+
+def mostrar_panel_login_superior():
+    participantes = obtener_participantes()
+    nombres_existentes = sorted(participantes.keys())
+
+    st.markdown(
+        f"""
+        <div class="quiniela-hero" style="margin-top: 0.35rem; padding: 1.2rem 1.35rem 1.05rem 1.35rem;">
+            <div class="quiniela-badge">ACCESO</div>
+            <div class="quiniela-hero-title" style="font-size:1.45rem;">Inicio de sesión</div>
+            <p class="quiniela-hero-subtitle">Elige tu tipo de acceso y entra a tu panel correspondiente.</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    tab_participante, tab_admin = st.tabs(["Participante", "Administrador"])
+
+    with tab_participante:
+        if not nombres_existentes:
+            st.warning("Aún no hay participantes creados. Pídele al administrador que los dé de alta.")
+        else:
+            participante_seleccionado = st.selectbox(
+                "Selecciona tu participante",
+                options=[""] + nombres_existentes,
+                index=0,
+                key="login_superior_participante_nombre"
+            )
+            clave_ingresada = st.text_input("Clave", type="password", key="login_superior_participante_clave")
+
+            if st.button("Entrar como participante", use_container_width=True, key="login_superior_participante_boton"):
+                if not participante_seleccionado.strip():
+                    st.error("Debes seleccionar un participante.")
+                elif not clave_ingresada.strip():
+                    st.error("Debes capturar la clave.")
+                elif autenticar_participante(participante_seleccionado, clave_ingresada):
+                    st.session_state.participante_actual = participante_seleccionado
+                    st.session_state.participante_autenticado = True
+                    st.session_state.admin_autenticado = False
+                    st.session_state.panel_login_abierto = False
+                    st.success(f"Bienvenido, {participante_seleccionado}")
+                    st.rerun()
+                else:
+                    st.error("Nombre o clave incorrectos.")
+
+    with tab_admin:
+        usuario_admin = st.text_input("Usuario admin", key="login_superior_admin_usuario")
+        clave_admin = st.text_input("Clave admin", type="password", key="login_superior_admin_clave")
+
+        if st.button("Entrar como administrador", use_container_width=True, key="login_superior_admin_boton"):
+            if autenticar_admin(usuario_admin, clave_admin):
+                st.session_state.admin_autenticado = True
+                st.session_state.participante_actual = ""
+                st.session_state.participante_autenticado = False
+                st.session_state.panel_login_abierto = False
+                st.success("Acceso admin correcto.")
+                st.rerun()
+            else:
+                st.error("Usuario o clave de admin incorrectos.")
+
+
 # =========================================================
 # SIDEBAR
 # =========================================================
 mostrar_logo_sidebar()
-menu = st.sidebar.radio(
+menu_sidebar = st.sidebar.radio(
     "Menú",
-    ["Inicio", "Participante", "Resultados oficiales", "Admin", "Tabla general"]
+    ["Inicio", "Resultados oficiales FIFA", "Tabla general participantes"]
 )
+
+mostrar_barra_superior_acceso()
+
+if st.session_state.panel_login_abierto and not (st.session_state.admin_autenticado or st.session_state.participante_autenticado):
+    mostrar_panel_login_superior()
+    mostrar_divider()
+
+menu = menu_sidebar
+if menu == "Resultados oficiales FIFA":
+    menu = "Resultados oficiales"
+elif menu == "Tabla general participantes":
+    menu = "Tabla general"
+
+if st.session_state.admin_autenticado:
+    menu = "Admin"
+elif st.session_state.participante_autenticado:
+    menu = "Participante"
 
 # =========================================================
 # INICIO
@@ -1389,8 +1528,51 @@ menu = st.sidebar.radio(
 if menu == "Inicio":
     mostrar_encabezado_modulo(
         "QUINIELA MUNDIAL 2026",
-        "Vive el torneo con una experiencia más elegante, deportiva y profesional."
+        "Premium, FIFA style y fácil de leer para todos los participantes."
     )
+
+    col_m1, col_m2, col_m3 = st.columns(3)
+    col_m1.metric("Inscripción", "$400 MXN")
+    col_m2.metric("Punto por resultado", "+1")
+    col_m3.metric("Extra por marcador exacto", "+2")
+
+    mostrar_divider()
+
+    st.markdown("### Cómo funciona el puntaje")
+    puntos_df = pd.DataFrame([
+        {"Concepto": "Aciertas ganador o empate", "Puntos": 1},
+        {"Concepto": "Aciertas marcador exacto", "Puntos extra": 2},
+        {"Concepto": "Marcador exacto total", "Total obtenido": 3},
+    ])
+    st.dataframe(puntos_df, use_container_width=True, hide_index=True)
+
+    st.markdown("### Bonus por equipos favoritos")
+    bonus_df = pd.DataFrame([
+        {"Fase": fase, "Puntos por victoria del favorito": puntos}
+        for fase, puntos in BONOS_FAVORITOS.items()
+    ])
+    st.dataframe(bonus_df, use_container_width=True, hide_index=True)
+
+    mostrar_divider()
+
+    st.markdown("### Cómo llenar tu quiniela")
+    st.write("1. Inicia sesión desde el botón superior derecho.")
+    st.write("2. Guarda primero tus 2 equipos favoritos.")
+    st.write("3. Captura tus pronósticos por fase.")
+    st.write("4. Si estás en Fase de grupos, captura un grupo y guarda antes de cambiar a otro.")
+    st.write("5. Cuando termines tu fase, envía tu versión oficial.")
+
+    st.warning(
+        "Importante: si capturas un grupo y cambias a otro sin presionar 'Guardar borrador de la fase', "
+        "lo que escribiste en pantalla todavía no se conserva."
+    )
+
+    st.info(
+        "Para evitar cansancio visual se mantiene la captura por grupo en Fase de grupos. "
+        "La recomendación es llenar un grupo, guardar borrador y después pasar al siguiente."
+    )
+
+    mostrar_divider()
 
     if FECHA_LIMITE_FAVORITOS:
         st.info(
@@ -1410,27 +1592,7 @@ if menu == "Inicio":
         ])
         st.dataframe(cierres_df, use_container_width=True, hide_index=True)
 
-    mostrar_divider()
-
-    st.markdown("### Reglas base")
-    st.write("- Inscripción: $400 MXN")
-    st.write("- 2 equipos favoritos")
-    st.write("- Favoritos cierran con la primera fase")
-    st.write("- Los pronósticos cierran por fase")
-    st.write("- Mientras no venza la fase, se puede editar y reenviar")
-    st.write("- La última versión enviada antes del cierre es la válida")
-    st.write("- 1 punto por acertar ganador o empate")
-    st.write("- 2 puntos extra por marcador exacto")
-    st.write("- Si un equipo favorito queda eliminado, deja de sumar puntos")
-
-    mostrar_divider()
-
-    st.markdown("### Calendario actual cargado")
-    calendario_df = construir_calendario_df()
-    if calendario_df.empty:
-        st.info("Aún no hay partidos cargados.")
-    else:
-        st.dataframe(calendario_df, use_container_width=True, hide_index=True)
+    st.caption("Tabla de reparto del premio: pendiente por definir.")
 
 # =========================================================
 # PARTICIPANTE
@@ -1561,6 +1723,7 @@ elif menu == "Participante":
                 grupo_seleccionado = None
 
                 if fase_seleccionada == "Fase de grupos":
+                    st.warning("Guarda el borrador antes de cambiar de grupo. Cambiar de grupo sin guardar descarta lo que aún no se ha guardado en pantalla.")
                     grupos_disponibles = obtener_grupos_fase(partidos, fase_seleccionada)
 
                     if grupos_disponibles:
@@ -1730,7 +1893,7 @@ elif menu == "Resultados oficiales":
 elif menu == "Admin":
     mostrar_encabezado_modulo(
         "ADMIN",
-        "Gestión de calendario, participantes y resultados"
+        "Gestión de calendario, participantes, resultados y visibilidad"
     )
 
     if not st.session_state.admin_autenticado:
@@ -1752,6 +1915,26 @@ elif menu == "Admin":
             if st.button("Cerrar sesión admin", use_container_width=True):
                 st.session_state.admin_autenticado = False
                 st.rerun()
+
+        st.markdown("## 0) Configuración general")
+
+        config = obtener_configuracion()
+        mostrar_pronosticos = st.checkbox(
+            "Permitir ver pronósticos de otros participantes",
+            value=bool(config.get("mostrar_pronosticos_publicos", False)),
+            key="toggle_pronosticos_publicos_admin"
+        )
+
+        if st.button("Guardar configuración general", use_container_width=True):
+            st.session_state.db["configuracion"]["mostrar_pronosticos_publicos"] = mostrar_pronosticos
+            persistir_db()
+            st.success("Configuración actualizada correctamente.")
+            st.rerun()
+
+        if pronosticos_publicos_habilitados():
+            st.success("Los pronósticos de otros participantes están visibles para el público.")
+        else:
+            st.warning("Los pronósticos de otros participantes están ocultos para el público.")
 
         st.markdown("## 1) Gestión de calendario y limpieza")
 
@@ -2045,7 +2228,7 @@ elif menu == "Admin":
 # =========================================================
 elif menu == "Tabla general":
     mostrar_encabezado_modulo(
-        "TABLA GENERAL",
+        "TABLA GENERAL PARTICIPANTES",
         "Ranking acumulado con desempates activos"
     )
 
@@ -2078,19 +2261,27 @@ elif menu == "Tabla general":
         if participante_filtro:
             participante_data = participantes.get(participante_filtro)
 
-            favoritos_df = construir_tabla_favoritos_participante(participante_data)
-            st.markdown("### Favoritos y puntos por fase")
-            if favoritos_df.empty:
-                st.info("Este participante aún no tiene favoritos guardados.")
+            if not usuario_puede_ver_detalle_participante(participante_filtro):
+                if seleccion_es_participante_ajeno(participante_filtro):
+                    st.warning("👉 No seas metiche 😎. Los pronósticos de otros participantes no están visibles por el momento.")
+                else:
+                    st.warning("No tienes permiso para ver este detalle.")
             else:
-                st.dataframe(favoritos_df, use_container_width=True, hide_index=True)
+                favoritos_df = construir_tabla_favoritos_participante(participante_data)
+                st.markdown("### Favoritos y puntos por fase")
+                if favoritos_df.empty:
+                    st.info("Este participante aún no tiene favoritos guardados.")
+                else:
+                    st.dataframe(favoritos_df, use_container_width=True, hide_index=True)
 
-            pronosticos_participante_df = construir_tabla_pronosticos_participante(
-                participante_filtro,
-                participante_data
-            )
-            st.markdown("### Pronósticos del participante")
-            if pronosticos_participante_df.empty:
-                st.info("Este participante aún no tiene pronósticos capturados.")
-            else:
-                st.dataframe(pronosticos_participante_df, use_container_width=True, hide_index=True)
+                pronosticos_participante_df = construir_tabla_pronosticos_participante(
+                    participante_filtro,
+                    participante_data
+                )
+                st.markdown("### Pronósticos del participante")
+                if pronosticos_participante_df.empty:
+                    st.info("Este participante aún no tiene pronósticos capturados.")
+                else:
+                    st.dataframe(pronosticos_participante_df, use_container_width=True, hide_index=True)
+
+Update quiniela version final UI
