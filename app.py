@@ -1,6 +1,12 @@
 import json
 import os
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+MX_TZ = ZoneInfo("America/Mexico_City")
+
+def ahora_mx():
+    return datetime.now(MX_TZ)
 from pathlib import Path
 
 import pandas as pd
@@ -326,6 +332,12 @@ if "participante_autenticado" not in st.session_state:
 if "panel_login_abierto" not in st.session_state:
     st.session_state.panel_login_abierto = False
 
+if "vista_actual" not in st.session_state:
+    st.session_state.vista_actual = "Inicio"
+
+if "menu_sidebar_last" not in st.session_state:
+    st.session_state.menu_sidebar_last = "Inicio"
+
 # =========================================================
 # UTILIDADES VISUALES
 # =========================================================
@@ -382,7 +394,7 @@ def parsear_fecha_hora(fecha_texto: str, hora_texto: str):
 
     for fmt in formatos:
         try:
-            return datetime.strptime(f"{fecha_texto} {hora_texto}", fmt)
+            return datetime.strptime(f"{fecha_texto} {hora_texto}", fmt).replace(tzinfo=MX_TZ)
         except ValueError:
             continue
 
@@ -571,7 +583,7 @@ def construir_cierres_por_fase(df_partidos: pd.DataFrame):
 def fase_bloqueada(fase: str, cierres_por_fase: dict):
     if fase not in cierres_por_fase:
         return False
-    return datetime.now() >= cierres_por_fase[fase]
+    return ahora_mx() >= cierres_por_fase[fase]
 
 
 def resumen_fases_cargadas(df_partidos: pd.DataFrame):
@@ -658,6 +670,211 @@ def construir_historial_envios_df(participante_data):
     return pd.DataFrame(filas)
 
 # =========================================================
+# BONUS
+# =========================================================
+def bonus_base():
+    return {
+        "activo": False,
+        "partido_id": None,
+        "pregunta": "",
+        "opciones": [],
+        "puntos": 0,
+        "fecha_apertura": None,
+        "fecha_apertura_iso": None,
+        "fecha_cierre": None,
+        "fecha_cierre_iso": None,
+        "respuesta_correcta": None,
+        "respuestas_participantes": {},
+        "historial": []
+    }
+
+
+def normalizar_bonus_data(bonus_data):
+    base = bonus_base()
+    if not isinstance(bonus_data, dict):
+        return base
+    for k, v in base.items():
+        if k not in bonus_data:
+            bonus_data[k] = v
+    if not isinstance(bonus_data.get("opciones"), list):
+        bonus_data["opciones"] = []
+    if not isinstance(bonus_data.get("respuestas_participantes"), dict):
+        bonus_data["respuestas_participantes"] = {}
+    if not isinstance(bonus_data.get("historial"), list):
+        bonus_data["historial"] = []
+    return bonus_data
+
+
+def obtener_bonus():
+    if "bonus" not in st.session_state.db or not isinstance(st.session_state.db.get("bonus"), dict):
+        st.session_state.db["bonus"] = bonus_base()
+        persistir_db()
+    else:
+        st.session_state.db["bonus"] = normalizar_bonus_data(st.session_state.db["bonus"])
+    return st.session_state.db["bonus"]
+
+
+def bonus_esta_activo():
+    bonus = obtener_bonus()
+    return bool(bonus.get("activo")) and bonus.get("partido_id") is not None and not bonus.get("respuesta_correcta")
+
+
+def obtener_partido_por_id(partido_id):
+    if partidos.empty or partido_id in [None, ""]:
+        return None
+    df = partidos[partidos["id"] == int(partido_id)]
+    if df.empty:
+        return None
+    return df.iloc[0]
+
+
+def bonus_cerrado_por_hora():
+    bonus = obtener_bonus()
+    partido = obtener_partido_por_id(bonus.get("partido_id"))
+    if partido is None:
+        return False
+    kickoff = partido.get("kickoff_dt")
+    if kickoff is None:
+        return False
+    return ahora_mx() >= kickoff
+
+
+def activar_bonus(partido_id, pregunta, opciones, puntos):
+    bonus = obtener_bonus()
+    ahora = ahora_mx()
+    bonus.update({
+        "activo": True,
+        "partido_id": int(partido_id),
+        "pregunta": str(pregunta).strip(),
+        "opciones": [str(x).strip() for x in opciones if str(x).strip()],
+        "puntos": int(puntos),
+        "fecha_apertura": ahora.strftime("%d/%m/%Y %H:%M"),
+        "fecha_apertura_iso": ahora.isoformat(),
+        "fecha_cierre": None,
+        "fecha_cierre_iso": None,
+        "respuesta_correcta": None,
+        "respuestas_participantes": {},
+    })
+    persistir_db()
+
+
+def cerrar_bonus_por_hora_si_aplica():
+    bonus = obtener_bonus()
+    if bonus.get("activo") and not bonus.get("fecha_cierre") and bonus_cerrado_por_hora():
+        ahora = ahora_mx()
+        bonus["fecha_cierre"] = ahora.strftime("%d/%m/%Y %H:%M")
+        bonus["fecha_cierre_iso"] = ahora.isoformat()
+        persistir_db()
+
+
+def guardar_respuesta_bonus(participante, respuesta):
+    bonus = obtener_bonus()
+    if not bonus_esta_activo() or bonus_cerrado_por_hora():
+        return False, "El bonus ya está cerrado."
+    if participante in bonus["respuestas_participantes"]:
+        return False, "Tu respuesta bonus ya fue registrada y no se puede cambiar."
+    if respuesta not in bonus.get("opciones", []):
+        return False, "Debes seleccionar una respuesta válida."
+
+    ahora = ahora_mx()
+    bonus["respuestas_participantes"][participante] = {
+        "respuesta": respuesta,
+        "fecha_respuesta": ahora.strftime("%d/%m/%Y %H:%M"),
+        "fecha_respuesta_iso": ahora.isoformat()
+    }
+    persistir_db()
+    return True, "Respuesta bonus guardada correctamente."
+
+
+def resolver_bonus(respuesta_correcta):
+    bonus = obtener_bonus()
+    if not bonus.get("activo"):
+        return False, "No hay un bonus activo para resolver."
+    if respuesta_correcta not in bonus.get("opciones", []):
+        return False, "Debes elegir una respuesta correcta válida."
+
+    cerrar_bonus_por_hora_si_aplica()
+
+    partido = obtener_partido_por_id(bonus.get("partido_id"))
+    registro = {
+        "partido_id": bonus.get("partido_id"),
+        "partido": f"{partido['local']} vs {partido['visitante']}" if partido is not None else "",
+        "fase": partido["fase"] if partido is not None else "",
+        "grupo": partido["grupo"] if partido is not None else "",
+        "pregunta": bonus.get("pregunta", ""),
+        "opciones": bonus.get("opciones", []),
+        "puntos": int(bonus.get("puntos", 0)),
+        "fecha_apertura": bonus.get("fecha_apertura"),
+        "fecha_cierre": bonus.get("fecha_cierre") or ahora_mx().strftime("%d/%m/%Y %H:%M"),
+        "respuesta_correcta": respuesta_correcta,
+        "respuestas_participantes": bonus.get("respuestas_participantes", {}),
+        "ganadores": []
+    }
+
+    for participante, datos in bonus.get("respuestas_participantes", {}).items():
+        if datos.get("respuesta") == respuesta_correcta:
+            registro["ganadores"].append({
+                "participante": participante,
+                "puntos_ganados": int(bonus.get("puntos", 0))
+            })
+
+    bonus["historial"].append(registro)
+
+    historial = bonus["historial"]
+    st.session_state.db["bonus"] = bonus_base()
+    st.session_state.db["bonus"]["historial"] = historial
+    persistir_db()
+    return True, "Bonus resuelto correctamente."
+
+
+def construir_respuestas_bonus_df():
+    bonus = obtener_bonus()
+    filas = []
+    for participante, datos in sorted(bonus.get("respuestas_participantes", {}).items()):
+        filas.append({
+            "Participante": participante,
+            "Respuesta seleccionada": datos.get("respuesta", ""),
+            "Fecha y hora": datos.get("fecha_respuesta", ""),
+            "Bloqueada": "Sí"
+        })
+    return pd.DataFrame(filas)
+
+
+def construir_historial_bonus_acumulado_df():
+    bonus = obtener_bonus()
+    acumulado = {}
+    for item in bonus.get("historial", []):
+        for ganador in item.get("ganadores", []):
+            nombre = ganador.get("participante", "")
+            acumulado[nombre] = acumulado.get(nombre, 0) + int(ganador.get("puntos_ganados", 0))
+
+    filas = []
+    participantes = sorted(obtener_participantes().keys())
+    for nombre in participantes:
+        filas.append({
+            "Participante": nombre,
+            "Puntos bonus acumulados": acumulado.get(nombre, 0)
+        })
+
+    if not filas:
+        return pd.DataFrame()
+
+    filas = sorted(filas, key=lambda x: (-x["Puntos bonus acumulados"], x["Participante"].lower()))
+    return pd.DataFrame(filas)
+
+
+def construir_partidos_bonus_selector():
+    if partidos.empty:
+        return []
+    opciones = []
+    for _, p in partidos.iterrows():
+        opciones.append({
+            "label": f"ID {int(p['id'])} · {p['local']} vs {p['visitante']} · {p['fase']} · Grupo {p['grupo']} · {p['fecha']} {p['hora']}",
+            "id": int(p["id"])
+        })
+    return opciones
+
+# =========================================================
 # BASE DE DATOS JSON
 # =========================================================
 def estructura_base():
@@ -666,7 +883,8 @@ def estructura_base():
             "mostrar_pronosticos_publicos": False
         },
         "participantes": {},
-        "resultados_oficiales": {}
+        "resultados_oficiales": {},
+        "bonus": bonus_base()
     }
 
 
@@ -702,6 +920,11 @@ def cargar_db():
 
     if "resultados_oficiales" not in db:
         db["resultados_oficiales"] = {}
+
+    if "bonus" not in db:
+        db["bonus"] = bonus_base()
+    else:
+        db["bonus"] = normalizar_bonus_data(db["bonus"])
 
     for _, datos in db["participantes"].items():
         if "clave" not in datos:
@@ -977,7 +1200,7 @@ def obtener_resultado_oficial(partido_id):
 def favoritos_bloqueados():
     if FECHA_LIMITE_FAVORITOS is None:
         return False
-    return datetime.now() >= FECHA_LIMITE_FAVORITOS
+    return ahora_mx() >= FECHA_LIMITE_FAVORITOS
 
 
 def obtener_pronostico_existente(participante_data, partido_id):
@@ -1001,7 +1224,7 @@ def guardar_pronosticos_fase(participante_data, pronosticos_fase):
 def guardar_envio_oficial(participante_data, pronosticos_fase, fase, grupo=None):
     guardar_pronosticos_fase(participante_data, pronosticos_fase)
 
-    ahora = datetime.now()
+    ahora = ahora_mx()
     etapa_envio = normalizar_nombre_etapa_envio(fase)
 
     participante_data["envios_por_fase"][etapa_envio] = {
@@ -1232,8 +1455,15 @@ def estadisticas_participante(nombre, participante_data):
     if fecha_envio_iso:
         try:
             fecha_envio_dt = datetime.fromisoformat(fecha_envio_iso)
+            if fecha_envio_dt.tzinfo is None:
+                fecha_envio_dt = fecha_envio_dt.replace(tzinfo=MX_TZ)
+            else:
+                fecha_envio_dt = fecha_envio_dt.astimezone(MX_TZ)
         except ValueError:
             fecha_envio_dt = None
+
+    if fecha_envio_dt is None:
+        fecha_envio_dt = datetime.max.replace(tzinfo=MX_TZ)
 
     return {
         "Participante": nombre,
@@ -1244,7 +1474,7 @@ def estadisticas_participante(nombre, participante_data):
         "Puntos eliminación directa": knockout_points,
         "Puntos fases finales": late_stage_points,
         "Puntos ganados": total_general,
-        "_fecha_envio_dt": fecha_envio_dt if fecha_envio_dt else datetime.max
+        "_fecha_envio_dt": fecha_envio_dt
     }
 
 
@@ -1367,6 +1597,73 @@ def construir_calendario_df():
     })
 
 
+
+def obtener_ids_partidos_fase(df_partidos, fase):
+    if df_partidos.empty:
+        return set()
+    return set(df_partidos[df_partidos["fase"] == fase]["id"].astype(int).tolist())
+
+
+def obtener_ids_pronosticados_fase(participante_data, fase):
+    ids_fase = obtener_ids_partidos_fase(partidos, fase)
+    return {int(p["id"]) for p in participante_data.get("pronosticos_guardados", []) if int(p["id"]) in ids_fase}
+
+
+def contar_avance_fase(participante_data, fase):
+    ids_fase = obtener_ids_partidos_fase(partidos, fase)
+    ids_pronosticados = obtener_ids_pronosticados_fase(participante_data, fase)
+    return len(ids_pronosticados), len(ids_fase)
+
+
+def fase_completa_para_envio(participante_data, fase):
+    capturados, total = contar_avance_fase(participante_data, fase)
+    return total > 0 and capturados == total
+
+
+def resetear_borrador_fase_actual(participante_data, fase):
+    ids_fase = obtener_ids_partidos_fase(partidos, fase)
+    participante_data["pronosticos_guardados"] = [
+        p for p in participante_data.get("pronosticos_guardados", [])
+        if int(p["id"]) not in ids_fase
+    ]
+    etapa_envio = normalizar_nombre_etapa_envio(fase)
+    if etapa_envio in participante_data.get("envios_por_fase", {}):
+        del participante_data["envios_por_fase"][etapa_envio]
+    persistir_db()
+
+
+def equipo_sigue_activo_por_fases_posteriores(equipo, df_partidos, resultados):
+    partidos_equipo = df_partidos[(df_partidos["local"] == equipo) | (df_partidos["visitante"] == equipo)].copy()
+    if partidos_equipo.empty:
+        return False
+
+    partidos_equipo = partidos_equipo.sort_values(by=["kickoff_dt", "id"]).reset_index(drop=True)
+
+    indices_resueltos = []
+    for _, partido in partidos_equipo.iterrows():
+        if resultados.get(str(partido["id"])):
+            try:
+                indices_resueltos.append(fases_ordenadas.index(partido["fase"]))
+            except ValueError:
+                continue
+
+    if not indices_resueltos:
+        return True
+
+    ultimo_indice = max(indices_resueltos)
+
+    for _, partido in partidos_equipo.iterrows():
+        try:
+            indice_fase = fases_ordenadas.index(partido["fase"])
+        except ValueError:
+            continue
+        if indice_fase > ultimo_indice:
+            return True
+        if indice_fase == ultimo_indice and not resultados.get(str(partido["id"])):
+            return True
+
+    return False
+
 def construir_resumen_pronosticos(pronosticos_base):
     filas = []
 
@@ -1392,13 +1689,14 @@ def construir_resumen_pronosticos(pronosticos_base):
     return pd.DataFrame(filas)
 
 
+
 def mostrar_favoritos_participante(participante_data):
     st.markdown("### Tus equipos favoritos")
     puntos_favoritos = calcular_puntos_favoritos_por_equipo(participante_data)
     resultados = obtener_resultados_oficiales()
 
     for equipo in participante_data["favoritos_guardados"]:
-        vivo = equipo_sigue_vivo(equipo, partidos, resultados)
+        vivo = equipo_sigue_activo_por_fases_posteriores(equipo, partidos, resultados)
         estado = "Activo" if vivo else "Eliminado"
         clase_estado = "texto-verde" if vivo else "texto-rojo"
 
@@ -1412,6 +1710,14 @@ def cerrar_toda_sesion():
     st.session_state.participante_actual = ""
     st.session_state.participante_autenticado = False
     st.session_state.panel_login_abierto = False
+    st.session_state.vista_actual = "Inicio"
+
+
+def ir_a_panel_actual():
+    if st.session_state.admin_autenticado:
+        st.session_state.vista_actual = "Admin"
+    elif st.session_state.participante_autenticado:
+        st.session_state.vista_actual = "Participante"
 
 
 def mostrar_barra_superior_acceso():
@@ -1427,9 +1733,15 @@ def mostrar_barra_superior_acceso():
 
     with col_der:
         if st.session_state.admin_autenticado or st.session_state.participante_autenticado:
-            if st.button("Cerrar sesión", use_container_width=True, key="boton_cerrar_sesion_superior"):
-                cerrar_toda_sesion()
-                st.rerun()
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("Mi panel", use_container_width=True, key="boton_mi_panel_superior"):
+                    ir_a_panel_actual()
+                    st.rerun()
+            with c2:
+                if st.button("Cerrar sesión", use_container_width=True, key="boton_cerrar_sesion_superior"):
+                    cerrar_toda_sesion()
+                    st.rerun()
         else:
             if st.button("Inicio de sesión", use_container_width=True, key="boton_inicio_sesion_superior"):
                 st.session_state.panel_login_abierto = not st.session_state.panel_login_abierto
@@ -1475,6 +1787,7 @@ def mostrar_panel_login_superior():
                     st.session_state.participante_autenticado = True
                     st.session_state.admin_autenticado = False
                     st.session_state.panel_login_abierto = False
+                    st.session_state.vista_actual = "Participante"
                     st.success(f"Bienvenido, {participante_seleccionado}")
                     st.rerun()
                 else:
@@ -1490,6 +1803,7 @@ def mostrar_panel_login_superior():
                 st.session_state.participante_actual = ""
                 st.session_state.participante_autenticado = False
                 st.session_state.panel_login_abierto = False
+                st.session_state.vista_actual = "Admin"
                 st.success("Acceso admin correcto.")
                 st.rerun()
             else:
@@ -1498,12 +1812,22 @@ def mostrar_panel_login_superior():
 
 # =========================================================
 # SIDEBAR
+
 # =========================================================
 mostrar_logo_sidebar()
 menu_sidebar = st.sidebar.radio(
     "Menú",
-    ["Inicio", "Resultados oficiales FIFA", "Tabla general participantes"]
+    ["Inicio", "Resultados oficiales FIFA", "Tabla general participantes", "Bonus"]
 )
+
+if menu_sidebar != st.session_state.menu_sidebar_last:
+    st.session_state.menu_sidebar_last = menu_sidebar
+    if menu_sidebar == "Resultados oficiales FIFA":
+        st.session_state.vista_actual = "Resultados oficiales"
+    elif menu_sidebar == "Tabla general participantes":
+        st.session_state.vista_actual = "Tabla general"
+    else:
+        st.session_state.vista_actual = menu_sidebar
 
 mostrar_barra_superior_acceso()
 
@@ -1511,16 +1835,9 @@ if st.session_state.panel_login_abierto and not (st.session_state.admin_autentic
     mostrar_panel_login_superior()
     mostrar_divider()
 
-menu = menu_sidebar
-if menu == "Resultados oficiales FIFA":
-    menu = "Resultados oficiales"
-elif menu == "Tabla general participantes":
-    menu = "Tabla general"
+cerrar_bonus_por_hora_si_aplica()
 
-if st.session_state.admin_autenticado:
-    menu = "Admin"
-elif st.session_state.participante_autenticado:
-    menu = "Participante"
+menu = st.session_state.vista_actual
 
 # =========================================================
 # INICIO
@@ -1628,6 +1945,7 @@ elif menu == "Participante":
                 elif autenticar_participante(participante_seleccionado, clave_ingresada):
                     st.session_state.participante_actual = participante_seleccionado
                     st.session_state.participante_autenticado = True
+                    st.session_state.vista_actual = "Participante"
                     st.success(f"Bienvenido, {participante_seleccionado}")
                     st.rerun()
                 else:
@@ -1756,7 +2074,7 @@ elif menu == "Participante":
                     g2_default = int(pronostico_existente["marcador_visitante"]) if pronostico_existente else 0
 
                     st.markdown(
-                        f"**{p['local']} vs {p['visitante']}**  \n"
+                        f"**{p['local']} vs {p['visitante']}**  \\n"
                         f"{p['ciudad']} — {p['fase']} — Grupo {p['grupo']} — {p['fecha']} {p['hora']}"
                     )
 
@@ -1786,27 +2104,46 @@ elif menu == "Participante":
                         "marcador_visitante": int(g2)
                     })
 
+                if not fase_cerrada and pronosticos_temporales:
+                    pronosticos_ordenados = sorted(pronosticos_temporales, key=lambda x: int(x["id"]))
+                    actuales_fase = [
+                        p for p in participante_data.get("pronosticos_guardados", [])
+                        if int(p["id"]) in obtener_ids_partidos_fase(partidos, fase_seleccionada)
+                    ]
+                    actuales_fase = sorted(actuales_fase, key=lambda x: int(x["id"]))
+                    if pronosticos_ordenados != actuales_fase:
+                        guardar_pronosticos_fase(participante_data, pronosticos_temporales)
+
+                st.info("Tus cambios se guardan automáticamente mientras capturas.")
+
+                capturados, total_fase = contar_avance_fase(participante_data, fase_seleccionada)
+                st.caption(f"Avance de la fase: {capturados} de {total_fase} partidos capturados")
+
                 col_g1, col_g2 = st.columns(2)
 
                 with col_g1:
-                    if st.button("Guardar borrador de la fase", use_container_width=True, disabled=fase_cerrada):
-                        guardar_pronosticos_fase(participante_data, pronosticos_temporales)
-                        st.success(f"Borrador guardado para la fase '{fase_seleccionada}'.")
+                    if st.button("Resetar borrador de la fase actual", use_container_width=True, disabled=fase_cerrada):
+                        resetear_borrador_fase_actual(participante_data, fase_seleccionada)
+                        st.success(f"Se limpió el borrador de la fase '{fase_seleccionada}'.")
                         st.rerun()
 
                 with col_g2:
-                    if st.button("Enviar versión oficial de la fase", use_container_width=True, disabled=fase_cerrada):
+                    puede_enviar_fase = fase_completa_para_envio(participante_data, fase_seleccionada)
+                    if st.button("Enviar versión oficial de la fase", use_container_width=True, disabled=(fase_cerrada or not puede_enviar_fase)):
                         if len(participante_data["favoritos_guardados"]) != 2:
                             st.error("Debes guardar tus 2 equipos favoritos antes de enviar.")
                         else:
                             guardar_envio_oficial(
                                 participante_data,
-                                pronosticos_temporales,
+                                [p for p in participante_data["pronosticos_guardados"] if int(p["id"]) in obtener_ids_partidos_fase(partidos, fase_seleccionada)],
                                 fase_seleccionada,
                                 grupo=grupo_seleccionado
                             )
                             st.success(f"Versión oficial enviada para la fase '{fase_seleccionada}'.")
                             st.rerun()
+
+                if not fase_completa_para_envio(participante_data, fase_seleccionada):
+                    st.warning("Completa todos los partidos de la fase actual para habilitar el envío oficial.")
 
                 envio_fase_actual = obtener_envio_fase(participante_data, fase_seleccionada)
                 if envio_fase_actual:
@@ -1835,7 +2172,7 @@ elif menu == "Participante":
 # =========================================================
 elif menu == "Resultados oficiales":
     mostrar_encabezado_modulo(
-        "RESULTADOS OFICIALES",
+        "RESULTADOS OFICIALES FIFA",
         "Consulta pública de marcadores capturados"
     )
 
@@ -1887,6 +2224,85 @@ elif menu == "Resultados oficiales":
         else:
             st.dataframe(df_resultados, use_container_width=True, hide_index=True)
 
+
+# =========================================================
+# BONUS
+# =========================================================
+elif menu == "Bonus":
+    mostrar_encabezado_modulo(
+        "BONUS",
+        "Dinámica adicional con respuesta única, cierre automático y auditoría."
+    )
+
+    bonus = obtener_bonus()
+
+    if bonus_esta_activo():
+        partido_bonus = obtener_partido_por_id(bonus.get("partido_id"))
+        col_bonus_izq, col_bonus_der = st.columns([1.15, 1])
+
+        with col_bonus_izq:
+            st.metric("Puntos bonus", f"{int(bonus.get('puntos', 0))} pts")
+
+            if partido_bonus is not None:
+                st.markdown(
+                    f"""
+                    <div class="quiniela-hero" style="text-align:left; padding:1.2rem 1.35rem;">
+                        <div class="quiniela-hero-title" style="font-size:1.25rem;">{partido_bonus['local']} vs {partido_bonus['visitante']}</div>
+                        <p class="quiniela-hero-subtitle">{partido_bonus['ciudad']} — {partido_bonus['fase']} — Grupo {partido_bonus['grupo']} — {partido_bonus['fecha']} {partido_bonus['hora']}</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+            st.markdown(f"### {bonus.get('pregunta', 'Pregunta bonus')}")
+            opciones_bonus = bonus.get("opciones", [])
+
+            if bonus_cerrado_por_hora():
+                st.error("El bonus ya está bloqueado porque el partido inició.")
+            else:
+                st.success("Bonus abierto. Responde antes del inicio del partido.")
+
+            if not st.session_state.participante_autenticado:
+                st.info("Inicia sesión como participante para responder el bonus.")
+            else:
+                respuesta_existente = bonus.get("respuestas_participantes", {}).get(st.session_state.participante_actual)
+
+                if respuesta_existente:
+                    st.info(f"Tu respuesta registrada: {respuesta_existente.get('respuesta', '')}")
+                    st.caption("Las respuestas bonus no se pueden modificar.")
+                elif bonus_cerrado_por_hora():
+                    st.warning("Ya no puedes responder este bonus.")
+                else:
+                    respuesta_bonus = st.radio(
+                        "Selecciona tu respuesta",
+                        options=opciones_bonus,
+                        key=f"respuesta_bonus_{bonus.get('partido_id')}"
+                    )
+                    if st.button("Guardar respuesta bonus", use_container_width=True):
+                        ok, mensaje = guardar_respuesta_bonus(st.session_state.participante_actual, respuesta_bonus)
+                        if ok:
+                            st.success(mensaje)
+                            st.rerun()
+                        else:
+                            st.error(mensaje)
+
+        with col_bonus_der:
+            st.markdown("### Respuestas registradas")
+            respuestas_df = construir_respuestas_bonus_df()
+            if respuestas_df.empty:
+                st.info("Aún no hay respuestas registradas.")
+            else:
+                st.dataframe(respuestas_df, use_container_width=True, hide_index=True)
+
+    else:
+        st.markdown("### Historial acumulado de puntos bonus")
+        bonus_hist_df = construir_historial_bonus_acumulado_df()
+        if bonus_hist_df.empty:
+            st.info("Aún no hay puntos bonus acumulados para mostrar.")
+        else:
+            st.dataframe(bonus_hist_df, use_container_width=True, hide_index=True)
+            st.caption("Aquí se muestran los puntos bonus acumulados por participante a lo largo de toda la quiniela.")
+
 # =========================================================
 # ADMIN
 # =========================================================
@@ -1903,6 +2319,7 @@ elif menu == "Admin":
         if st.button("Entrar como admin", use_container_width=True):
             if autenticar_admin(usuario_admin, clave_admin):
                 st.session_state.admin_autenticado = True
+                st.session_state.vista_actual = "Admin"
                 st.success("Acceso admin correcto.")
                 st.rerun()
             else:
@@ -1935,6 +2352,70 @@ elif menu == "Admin":
             st.success("Los pronósticos de otros participantes están visibles para el público.")
         else:
             st.warning("Los pronósticos de otros participantes están ocultos para el público.")
+
+        st.markdown("## Bonus")
+
+        bonus = obtener_bonus()
+        opciones_partidos_bonus = construir_partidos_bonus_selector()
+
+        if bonus_esta_activo():
+            partido_bonus = obtener_partido_por_id(bonus.get("partido_id"))
+            st.success("Hay un bonus activo en curso.")
+            if partido_bonus is not None:
+                st.markdown(
+                    f"**Partido activo:** ID {int(partido_bonus['id'])} · {partido_bonus['local']} vs {partido_bonus['visitante']} · {partido_bonus['fase']} · Grupo {partido_bonus['grupo']} · {partido_bonus['fecha']} {partido_bonus['hora']}"
+                )
+            st.write(f"**Pregunta:** {bonus.get('pregunta', '')}")
+            st.write(f"**Puntos bonus:** {int(bonus.get('puntos', 0))}")
+
+            if bonus_cerrado_por_hora():
+                respuesta_correcta = st.selectbox(
+                    "Selecciona la respuesta correcta",
+                    options=bonus.get("opciones", []),
+                    key="admin_bonus_respuesta_correcta"
+                )
+                if st.button("Resolver bonus y asignar puntos", use_container_width=True):
+                    ok, mensaje = resolver_bonus(respuesta_correcta)
+                    if ok:
+                        st.success(mensaje)
+                        st.rerun()
+                    else:
+                        st.error(mensaje)
+            else:
+                st.info("El bonus sigue abierto. La resolución se habilita cuando el partido inicie.")
+        else:
+            st.info("No hay un bonus activo. Puedes configurar uno nuevo.")
+            if opciones_partidos_bonus:
+                labels = [x["label"] for x in opciones_partidos_bonus]
+                label_sel = st.selectbox("Selecciona el partido bonus por ID", options=labels, key="admin_bonus_partido")
+                partido_id_sel = next(x["id"] for x in opciones_partidos_bonus if x["label"] == label_sel)
+
+                pregunta_bonus = st.text_input("Pregunta bonus", key="admin_bonus_pregunta")
+                opcion_1 = st.text_input("Opción 1", key="admin_bonus_opcion_1")
+                opcion_2 = st.text_input("Opción 2", key="admin_bonus_opcion_2")
+                opcion_3 = st.text_input("Opción 3", key="admin_bonus_opcion_3")
+                opcion_4 = st.text_input("Opción 4", key="admin_bonus_opcion_4")
+                puntos_bonus = st.number_input("Puntos bonus", min_value=1, max_value=100, value=3, step=1, key="admin_bonus_puntos")
+
+                if st.button("Activar bonus", use_container_width=True):
+                    opciones_bonus = [opcion_1, opcion_2, opcion_3, opcion_4]
+                    if not str(pregunta_bonus).strip():
+                        st.error("Debes escribir la pregunta del bonus.")
+                    elif len([x for x in opciones_bonus if str(x).strip()]) < 2:
+                        st.error("Debes capturar al menos dos opciones de respuesta.")
+                    else:
+                        activar_bonus(partido_id_sel, pregunta_bonus, opciones_bonus, puntos_bonus)
+                        st.success("Bonus activado correctamente.")
+                        st.rerun()
+            else:
+                st.warning("No hay partidos disponibles para configurar bonus.")
+
+        historial_bonus_df = construir_historial_bonus_acumulado_df()
+        st.markdown("### Historial acumulado bonus")
+        if historial_bonus_df.empty:
+            st.info("Aún no hay puntos bonus acumulados.")
+        else:
+            st.dataframe(historial_bonus_df, use_container_width=True, hide_index=True)
 
         st.markdown("## 1) Gestión de calendario y limpieza")
 
@@ -2283,5 +2764,3 @@ elif menu == "Tabla general":
                     st.info("Este participante aún no tiene pronósticos capturados.")
                 else:
                     st.dataframe(pronosticos_participante_df, use_container_width=True, hide_index=True)
-
-
