@@ -1,22 +1,17 @@
-from streamlit_gsheets import GSheetsConnection
-
-
-st.write("Prueba de conexión Google Sheets:")
-st.dataframe(test_df, use_container_width=True)
-
 import json
 import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from pathlib import Path
+
+import pandas as pd
+import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 
 MX_TZ = ZoneInfo("America/Mexico_City")
 
 def ahora_mx():
     return datetime.now(MX_TZ)
-from pathlib import Path
-
-import pandas as pd
-import streamlit as st
 
 st.set_page_config(
     page_title="Quiniela Mundial FIFA 2026",
