@@ -1,7 +1,5 @@
 from streamlit_gsheets import GSheetsConnection
 
-conn = st.connection("gsheets", type=GSheetsConnection)
-test_df = conn.read(worksheet="configuracion", usecols=[0, 1], ttl=0)
 
 st.write("Prueba de conexión Google Sheets:")
 st.dataframe(test_df, use_container_width=True)
@@ -25,6 +23,12 @@ st.set_page_config(
     page_icon="⚽",
     layout="wide"
 )
+
+conn = st.connection("gsheets", type=GSheetsConnection)
+test_df = conn.read(worksheet="configuracion", usecols=[0, 1], ttl=0)
+
+st.write("Prueba de conexión Google Sheets:")
+st.dataframe(test_df, use_container_width=True)
 
 # =========================================================
 # DISEÑO / ASSETS
