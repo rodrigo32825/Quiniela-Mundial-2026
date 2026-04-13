@@ -886,7 +886,6 @@ def construir_partidos_bonus_selector():
 # =========================================================
 
 
-
 def cargar_db_desde_sheets_base():
     db = estructura_base()
 
@@ -898,16 +897,14 @@ def cargar_db_desde_sheets_base():
     for _, row in df.iterrows():
         clave = str(row.get("clave", "")).strip()
         valor_raw = row.get("valor", "")
-valor = str(valor_raw).strip().lower()
+        valor = str(valor_raw).strip().lower()
 
-if clave == "mostrar_pronosticos_publicos":
-    config["mostrar_pronosticos_publicos"] = valor in ["true", "1", "1.0", "si", "sí", "yes"]
+        if clave == "mostrar_pronosticos_publicos":
+            config["mostrar_pronosticos_publicos"] = valor in ["true", "1", "1.0", "si", "sí", "yes"]
 
     db["configuracion"] = config
 
     return db
-
-
 
 
 
