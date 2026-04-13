@@ -897,10 +897,11 @@ def cargar_db_desde_sheets_base():
 
     for _, row in df.iterrows():
         clave = str(row.get("clave", "")).strip()
-        valor = str(row.get("valor", "")).strip().lower()
+        valor_raw = row.get("valor", "")
+valor = str(valor_raw).strip().lower()
 
         if clave == "mostrar_pronosticos_publicos":
-            config["mostrar_pronosticos_publicos"] = valor in ["true", "1", "si", "sí", "yes"]
+            config["mostrar_pronosticos_publicos"] = valor in ["true", "1", "1.0", "si", "sí", "yes"]
 
     db["configuracion"] = config
 
