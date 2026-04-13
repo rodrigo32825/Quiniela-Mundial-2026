@@ -1013,9 +1013,61 @@ def cargar_db():
     return db
 
 
+def escribir_configuracion_en_sheets():
+    config = st.session_state.db.get("configuracion", {})
+
+    filas = [
+        {
+            "clave": "mostrar_pronosticos_publicos",
+            "valor": str(bool(config.get("mostrar_pronosticos_publicos", False)))
+        }
+    ]
+
+    df_config = pd.DataFrame(filas)
+    conn.update(worksheet="configuracion", data=df_config)
+
+
+
+def escribir_participantes_en_sheets():
+    participantes = st.session_state.db.get("participantes", {})
+    filas = []
+
+    for nombre, datos in participantes.items():
+        filas.append({
+            "nombre": nombre,
+            "clave": datos.get("clave", ""),
+            "favoritos_guardados_json": json.dumps(
+                datos.get("favoritos_guardados", []),
+                ensure_ascii=False
+            ),
+            "fecha_envio": datos.get("fecha_envio", "") or "",
+            "fecha_envio_iso": datos.get("fecha_envio_iso", "") or ""
+        })
+
+    df_participantes = pd.DataFrame(
+        filas,
+        columns=[
+            "nombre",
+            "clave",
+            "favoritos_guardados_json",
+            "fecha_envio",
+            "fecha_envio_iso"
+        ]
+    )
+
+    conn.update(worksheet="participantes", data=df_participantes)
+
+
+
 def persistir_db():
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(st.session_state.db, f, ensure_ascii=False, indent=2)
+
+    try:
+        escribir_configuracion_en_sheets()
+        escribir_participantes_en_sheets()
+    except Exception as e:
+        st.warning(f"No se pudo sincronizar configuracion/participantes con Google Sheets: {e}")
 
 
 if "db" not in st.session_state:
