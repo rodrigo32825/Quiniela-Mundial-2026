@@ -884,6 +884,17 @@ def construir_partidos_bonus_selector():
 # =========================================================
 # BASE DE DATOS JSON
 # =========================================================
+
+
+def cargar_db_desde_sheets_base():
+    df = conn.read(worksheet="configuracion", ttl=0)
+    return {
+        "configuracion": {},
+        "participantes": {},
+        "resultados_oficiales": {}
+    }
+
+
 def estructura_base():
     return {
         "configuracion": {
@@ -957,6 +968,13 @@ def persistir_db():
 
 if "db" not in st.session_state:
     st.session_state.db = cargar_db()
+
+
+if st.button("Prueba cargar base desde Google Sheets"):
+    db_test = cargar_db_desde_sheets_base()
+    st.write("Configuración desde Sheets:")
+    st.write(db_test.get("configuracion", {}))
+
 
 
 def obtener_participantes():
