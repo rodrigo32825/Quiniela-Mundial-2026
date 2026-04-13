@@ -904,6 +904,43 @@ def cargar_db_desde_sheets_base():
 
     db["configuracion"] = config
 
+
+    df_participantes = conn.read(worksheet="participantes", ttl=0)
+    df_participantes = pd.DataFrame(df_participantes).fillna("")
+
+    participantes = {}
+
+    for _, row in df_participantes.iterrows():
+        nombre = str(row.get("nombre", "")).strip()
+        if not nombre:
+            continue
+
+        clave = str(row.get("clave", "")).strip()
+        favoritos_json = str(row.get("favoritos_guardados_json", "")).strip()
+        fecha_envio = str(row.get("fecha_envio", "")).strip() or None
+        fecha_envio_iso = str(row.get("fecha_envio_iso", "")).strip() or None
+
+        try:
+            favoritos = json.loads(favoritos_json) if favoritos_json else []
+            if not isinstance(favoritos, list):
+                favoritos = []
+        except Exception:
+            favoritos = []
+
+        participantes[nombre] = {
+            "clave": clave,
+            "favoritos_guardados": favoritos,
+            "pronosticos_guardados": [],
+            "fecha_envio": fecha_envio,
+            "fecha_envio_iso": fecha_envio_iso,
+            "envios_por_fase": {}
+        }
+
+    db["participantes"] = participantes
+
+
+
+
     return db
 
 
