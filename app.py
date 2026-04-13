@@ -900,8 +900,8 @@ def cargar_db_desde_sheets_base():
         valor_raw = row.get("valor", "")
 valor = str(valor_raw).strip().lower()
 
-        if clave == "mostrar_pronosticos_publicos":
-            config["mostrar_pronosticos_publicos"] = valor in ["true", "1", "1.0", "si", "sí", "yes"]
+if clave == "mostrar_pronosticos_publicos":
+    config["mostrar_pronosticos_publicos"] = valor in ["true", "1", "1.0", "si", "sí", "yes"]
 
     db["configuracion"] = config
 
