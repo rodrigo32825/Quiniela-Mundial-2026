@@ -22,8 +22,8 @@ st.set_page_config(
 conn = st.connection("gsheets", type=GSheetsConnection)
 test_df = conn.read(worksheet="configuracion", usecols=[0, 1], ttl=0)
 
-st.write("Prueba de conexión Google Sheets:")
-st.dataframe(test_df, use_container_width=True)
+# st.write("Prueba de conexión Google Sheets:")
+# st.dataframe(test_df, use_container_width=True)
 
 # =========================================================
 # DISEÑO / ASSETS
@@ -982,13 +982,13 @@ def persistir_db():
 
 
 if "db" not in st.session_state:
-    st.session_state.db = cargar_db()
+    st.session_state.db = cargar_db_desde_sheets_base()
 
 
-if st.button("Prueba cargar base desde Google Sheets"):
-    db_test = cargar_db_desde_sheets_base()
-    st.write("Configuración desde Sheets:")
-    st.write(db_test.get("configuracion", {}))
+# if st.button("Prueba cargar base desde Google Sheets"):
+#    db_test = cargar_db_desde_sheets_base()
+#    st.write("Configuración desde Sheets:")
+#    st.write(db_test.get("configuracion", {}))
 
 
 
