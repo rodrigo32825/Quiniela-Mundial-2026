@@ -886,13 +886,30 @@ def construir_partidos_bonus_selector():
 # =========================================================
 
 
+
 def cargar_db_desde_sheets_base():
+    db = estructura_base()
+
     df = conn.read(worksheet="configuracion", ttl=0)
-    return {
-        "configuracion": {},
-        "participantes": {},
-        "resultados_oficiales": {}
-    }
+    df = pd.DataFrame(df).fillna("")
+
+    config = {"mostrar_pronosticos_publicos": False}
+
+    for _, row in df.iterrows():
+        clave = str(row.get("clave", "")).strip()
+        valor = str(row.get("valor", "")).strip().lower()
+
+        if clave == "mostrar_pronosticos_publicos":
+            config["mostrar_pronosticos_publicos"] = valor in ["true", "1", "si", "sí", "yes"]
+
+    db["configuracion"] = config
+
+    return db
+
+
+
+
+
 
 
 def estructura_base():
