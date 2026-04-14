@@ -2630,7 +2630,7 @@ elif menu == "Participante":
                 grupo_seleccionado = None
 
                 if fase_seleccionada == "Fase de grupos":
-                    st.warning("Guarda el borrador antes de cambiar de grupo. Cambiar de grupo sin guardar descarta lo que aún no se ha guardado en pantalla.")
+                    st.warning("Tus cambios se guardan automáticamente mientras captura.")
                     grupos_disponibles = obtener_grupos_fase(partidos, fase_seleccionada)
 
                     if grupos_disponibles:
