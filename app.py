@@ -890,9 +890,13 @@ def construir_partidos_bonus_selector():
 # =========================================================
 
 
+
 def cargar_db_desde_sheets_base():
     db = estructura_base()
 
+    # -----------------------------------------------------
+    # CONFIGURACION
+    # -----------------------------------------------------
     df = leer_worksheet_seguro("configuracion")
 
     config = {"mostrar_pronosticos_publicos": False}
@@ -908,6 +912,9 @@ def cargar_db_desde_sheets_base():
 
     db["configuracion"] = config
 
+    # -----------------------------------------------------
+    # PARTICIPANTES (base)
+    # -----------------------------------------------------
     df_participantes = leer_worksheet_seguro("participantes")
 
     participantes = {}
@@ -939,8 +946,80 @@ def cargar_db_desde_sheets_base():
                 "envios_por_fase": {}
             }
 
+    # -----------------------------------------------------
+    # PRONOSTICOS
+    # hoja: pronosticos
+    # columnas: participante, partido_id, marcador_local, marcador_visitante
+    # -----------------------------------------------------
+    df_pronosticos = leer_worksheet_seguro("pronosticos")
+
+    if not df_pronosticos.empty:
+        for _, row in df_pronosticos.iterrows():
+            participante = str(row.get("participante", "")).strip()
+            if not participante:
+                continue
+            if participante not in participantes:
+                participantes[participante] = participante_base()
+
+            try:
+                partido_id = int(float(row.get("partido_id", "")))
+                marcador_local = int(float(row.get("marcador_local", 0)))
+                marcador_visitante = int(float(row.get("marcador_visitante", 0)))
+            except Exception:
+                continue
+
+            participantes[participante]["pronosticos_guardados"].append({
+                "id": partido_id,
+                "marcador_local": marcador_local,
+                "marcador_visitante": marcador_visitante
+            })
+
+    # asegurar orden estable
+    for nombre in participantes:
+        participantes[nombre]["pronosticos_guardados"] = sorted(
+            participantes[nombre].get("pronosticos_guardados", []),
+            key=lambda x: int(x["id"])
+        )
+
+    # -----------------------------------------------------
+    # ENVIOS POR FASE
+    # hoja: envios_por_fase
+    # columnas: participante, etapa, fecha_envio, fecha_envio_iso, grupo
+    # -----------------------------------------------------
+    df_envios = leer_worksheet_seguro("envios_por_fase")
+
+    if not df_envios.empty:
+        for _, row in df_envios.iterrows():
+            participante = str(row.get("participante", "")).strip()
+            etapa = str(row.get("etapa", "")).strip()
+            if not participante or not etapa:
+                continue
+            if participante not in participantes:
+                participantes[participante] = participante_base()
+
+            fecha_envio = str(row.get("fecha_envio", "")).strip() or None
+            fecha_envio_iso = str(row.get("fecha_envio_iso", "")).strip() or None
+            grupo = str(row.get("grupo", "")).strip()
+
+            participantes[participante]["envios_por_fase"][etapa] = {
+                "fecha_envio": fecha_envio,
+                "fecha_envio_iso": fecha_envio_iso,
+                "grupo": grupo
+            }
+
+            # conservar tambien ultima fecha general del participante
+            if fecha_envio:
+                participantes[participante]["fecha_envio"] = fecha_envio
+            if fecha_envio_iso:
+                actual_iso = participantes[participante].get("fecha_envio_iso")
+                if not actual_iso or fecha_envio_iso > actual_iso:
+                    participantes[participante]["fecha_envio_iso"] = fecha_envio_iso
+
     db["participantes"] = participantes
 
+    # -----------------------------------------------------
+    # RESULTADOS OFICIALES
+    # -----------------------------------------------------
     df_resultados = leer_worksheet_seguro("resultados_oficiales")
     resultados_oficiales = {}
 
@@ -963,30 +1042,140 @@ def cargar_db_desde_sheets_base():
 
     db["resultados_oficiales"] = resultados_oficiales
 
-    df_bonus = leer_worksheet_seguro("bonus")
-    bonus_data = bonus_base()
+    # -----------------------------------------------------
+    # BONUS
+    # pestañas:
+    # - bonus_config
+    # - bonus_respuestas
+    # - bonus_historial
+    # -----------------------------------------------------
+    bonus = bonus_base()
 
-    if not df_bonus.empty:
-        bonus_json = ""
+    df_bonus_config = leer_worksheet_seguro("bonus_config")
+    if not df_bonus_config.empty:
+        row = df_bonus_config.iloc[0]
 
-        if "bonus_json" in df_bonus.columns and not df_bonus.empty:
-            bonus_json = str(df_bonus.iloc[0].get("bonus_json", "")).strip()
-        elif "clave" in df_bonus.columns and "valor" in df_bonus.columns:
-            for _, row in df_bonus.iterrows():
-                clave = str(row.get("clave", "")).strip()
-                if clave == "bonus_json":
-                    bonus_json = str(row.get("valor", "")).strip()
-                    break
+        activo_raw = str(row.get("activo", "")).strip().lower()
+        cerrado_raw = str(row.get("cerrado", "")).strip().lower()
+        resuelto_raw = str(row.get("resuelto", "")).strip().lower()
 
-        if bonus_json:
+        partido_id_raw = str(row.get("partido_id", "")).strip()
+        partido_id = None
+        if partido_id_raw not in ["", "nan", "None", "none"]:
             try:
-                bonus_cargado = json.loads(bonus_json)
-                if isinstance(bonus_cargado, dict):
-                    bonus_data = normalizar_bonus_data(bonus_cargado)
+                partido_id = int(float(partido_id_raw))
             except Exception:
-                pass
+                partido_id = None
 
-    db["bonus"] = bonus_data
+        opciones_json = str(row.get("opciones_json", "")).strip()
+        try:
+            opciones = json.loads(opciones_json) if opciones_json else []
+            if not isinstance(opciones, list):
+                opciones = []
+        except Exception:
+            opciones = []
+
+        puntos_raw = row.get("puntos", 0)
+        try:
+            puntos = int(float(puntos_raw))
+        except Exception:
+            puntos = 0
+
+        bonus.update({
+            "activo": activo_raw in ["true", "1", "1.0", "si", "sí", "yes"],
+            "partido_id": partido_id,
+            "pregunta": str(row.get("pregunta", "")).strip(),
+            "opciones": [str(x).strip() for x in opciones if str(x).strip()],
+            "puntos": puntos,
+            "fecha_apertura": str(row.get("fecha_apertura", "")).strip() or None,
+            "fecha_cierre": str(row.get("fecha_cierre", "")).strip() or None,
+            "respuesta_correcta": str(row.get("respuesta_correcta", "")).strip() or None,
+        })
+
+        # compatibilidad con db actual
+        bonus["fecha_apertura_iso"] = bonus.get("fecha_apertura_iso") or None
+        bonus["fecha_cierre_iso"] = bonus.get("fecha_cierre_iso") or None
+
+        # si la hoja indica cerrado/resuelto pero no existe respuesta correcta,
+        # no forzamos lógica nueva; solo respetamos activo.
+        if resuelto_raw in ["true", "1", "1.0", "si", "sí", "yes"] and not bonus.get("respuesta_correcta"):
+            bonus["activo"] = False
+        if cerrado_raw in ["true", "1", "1.0", "si", "sí", "yes"] and not bonus.get("fecha_cierre"):
+            bonus["fecha_cierre"] = row.get("fecha_cierre", "") or None
+
+    df_bonus_respuestas = leer_worksheet_seguro("bonus_respuestas")
+    if not df_bonus_respuestas.empty:
+        for _, row in df_bonus_respuestas.iterrows():
+            participante = str(row.get("participante", "")).strip()
+            if not participante:
+                continue
+
+            bonus["respuestas_participantes"][participante] = {
+                "respuesta": str(row.get("respuesta", "")).strip(),
+                "fecha_respuesta": str(row.get("fecha_respuesta", "")).strip() or None,
+                "fecha_respuesta_iso": str(row.get("fecha_respuesta_iso", "")).strip() or None
+            }
+
+    df_bonus_historial = leer_worksheet_seguro("bonus_historial")
+    if not df_bonus_historial.empty:
+        historial_agregado = {}
+
+        for _, row in df_bonus_historial.iterrows():
+            partido_id_raw = str(row.get("partido_id", "")).strip()
+            pregunta = str(row.get("pregunta", "")).strip()
+            respuesta_correcta = str(row.get("respuesta_correcta", "")).strip()
+            fecha_resolucion = str(row.get("fecha_resolucion", "")).strip() or None
+
+            if not partido_id_raw and not pregunta:
+                continue
+
+            key = f"{partido_id_raw}||{pregunta}||{respuesta_correcta}||{fecha_resolucion or ''}"
+
+            if key not in historial_agregado:
+                partido_id = None
+                if partido_id_raw not in ["", "nan", "None", "none"]:
+                    try:
+                        partido_id = int(float(partido_id_raw))
+                    except Exception:
+                        partido_id = None
+
+                historial_agregado[key] = {
+                    "partido_id": partido_id,
+                    "partido": "",
+                    "fase": "",
+                    "grupo": "",
+                    "pregunta": pregunta,
+                    "opciones": [],
+                    "puntos": 0,
+                    "fecha_apertura": None,
+                    "fecha_cierre": fecha_resolucion,
+                    "respuesta_correcta": respuesta_correcta or None,
+                    "respuestas_participantes": {},
+                    "ganadores": []
+                }
+
+            participante = str(row.get("participante", "")).strip()
+            respuesta_participante = str(row.get("respuesta_participante", "")).strip()
+            puntos_ganados_raw = row.get("puntos_ganados", 0)
+            try:
+                puntos_ganados = int(float(puntos_ganados_raw))
+            except Exception:
+                puntos_ganados = 0
+
+            if participante:
+                historial_agregado[key]["respuestas_participantes"][participante] = {
+                    "respuesta": respuesta_participante
+                }
+
+            if participante and puntos_ganados > 0:
+                historial_agregado[key]["ganadores"].append({
+                    "participante": participante,
+                    "puntos_ganados": puntos_ganados
+                })
+
+        bonus["historial"] = list(historial_agregado.values())
+
+    db["bonus"] = normalizar_bonus_data(bonus)
 
     return db
 
@@ -1001,17 +1190,14 @@ def refrescar_db_desde_sheets():
 
         st.session_state.db["configuracion"] = db_sheets.get("configuracion", st.session_state.db.get("configuracion", {}))
 
-        participantes_sheets = db_sheets.get("participantes", {})
-        if participantes_sheets:
-            st.session_state.db["participantes"] = participantes_sheets
+        if "participantes" in db_sheets:
+            st.session_state.db["participantes"] = db_sheets.get("participantes", {})
 
-        resultados_sheets = db_sheets.get("resultados_oficiales", {})
-        if resultados_sheets:
-            st.session_state.db["resultados_oficiales"] = resultados_sheets
+        if "resultados_oficiales" in db_sheets:
+            st.session_state.db["resultados_oficiales"] = db_sheets.get("resultados_oficiales", {})
 
-        bonus_sheets = db_sheets.get("bonus")
-        if isinstance(bonus_sheets, dict):
-            st.session_state.db["bonus"] = normalizar_bonus_data(bonus_sheets)
+        if "bonus" in db_sheets:
+            st.session_state.db["bonus"] = db_sheets.get("bonus", bonus_base())
     except Exception:
         pass
 
@@ -1127,6 +1313,64 @@ def escribir_participantes_en_sheets():
     conn.update(worksheet="participantes", data=df_participantes)
 
 
+def escribir_pronosticos_en_sheets():
+    participantes = st.session_state.db.get("participantes", {})
+    filas = []
+
+    for nombre, datos in participantes.items():
+        for pronostico in datos.get("pronosticos_guardados", []):
+            try:
+                filas.append({
+                    "participante": nombre,
+                    "partido_id": int(pronostico.get("id")),
+                    "marcador_local": int(pronostico.get("marcador_local", 0)),
+                    "marcador_visitante": int(pronostico.get("marcador_visitante", 0))
+                })
+            except Exception:
+                continue
+
+    df_pronosticos = pd.DataFrame(
+        filas,
+        columns=[
+            "participante",
+            "partido_id",
+            "marcador_local",
+            "marcador_visitante"
+        ]
+    )
+
+    conn.update(worksheet="pronosticos", data=df_pronosticos)
+
+
+def escribir_envios_por_fase_en_sheets():
+    participantes = st.session_state.db.get("participantes", {})
+    filas = []
+
+    for nombre, datos in participantes.items():
+        envios = datos.get("envios_por_fase", {})
+        for etapa, info in envios.items():
+            filas.append({
+                "participante": nombre,
+                "etapa": etapa,
+                "fecha_envio": info.get("fecha_envio", "") or "",
+                "fecha_envio_iso": info.get("fecha_envio_iso", "") or "",
+                "grupo": info.get("grupo", "") or ""
+            })
+
+    df_envios = pd.DataFrame(
+        filas,
+        columns=[
+            "participante",
+            "etapa",
+            "fecha_envio",
+            "fecha_envio_iso",
+            "grupo"
+        ]
+    )
+
+    conn.update(worksheet="envios_por_fase", data=df_envios)
+
+
 def escribir_resultados_oficiales_en_sheets():
     resultados = st.session_state.db.get("resultados_oficiales", {})
     filas = []
@@ -1157,16 +1401,109 @@ def escribir_resultados_oficiales_en_sheets():
     conn.update(worksheet="resultados_oficiales", data=df_resultados)
 
 
-def escribir_bonus_en_sheets():
+def escribir_bonus_config_en_sheets():
     bonus = normalizar_bonus_data(st.session_state.db.get("bonus", bonus_base()))
 
-    df_bonus = pd.DataFrame([
-        {
-            "bonus_json": json.dumps(bonus, ensure_ascii=False)
-        }
-    ], columns=["bonus_json"])
+    filas = [{
+        "activo": str(bool(bonus.get("activo", False))),
+        "partido_id": "" if bonus.get("partido_id") in [None, ""] else int(bonus.get("partido_id")),
+        "pregunta": bonus.get("pregunta", "") or "",
+        "opciones_json": json.dumps(bonus.get("opciones", []), ensure_ascii=False),
+        "puntos": int(bonus.get("puntos", 0) or 0),
+        "respuesta_correcta": bonus.get("respuesta_correcta", "") or "",
+        "cerrado": str(bool(bonus.get("fecha_cierre"))),
+        "resuelto": str(bool(bonus.get("respuesta_correcta"))),
+        "fecha_apertura": bonus.get("fecha_apertura", "") or "",
+        "fecha_cierre": bonus.get("fecha_cierre", "") or ""
+    }]
 
-    conn.update(worksheet="bonus", data=df_bonus)
+    df_bonus_config = pd.DataFrame(
+        filas,
+        columns=[
+            "activo",
+            "partido_id",
+            "pregunta",
+            "opciones_json",
+            "puntos",
+            "respuesta_correcta",
+            "cerrado",
+            "resuelto",
+            "fecha_apertura",
+            "fecha_cierre"
+        ]
+    )
+
+    conn.update(worksheet="bonus_config", data=df_bonus_config)
+
+
+def escribir_bonus_respuestas_en_sheets():
+    bonus = normalizar_bonus_data(st.session_state.db.get("bonus", bonus_base()))
+    filas = []
+
+    for participante, datos in bonus.get("respuestas_participantes", {}).items():
+        filas.append({
+            "participante": participante,
+            "partido_id": "" if bonus.get("partido_id") in [None, ""] else int(bonus.get("partido_id")),
+            "pregunta": bonus.get("pregunta", "") or "",
+            "respuesta": datos.get("respuesta", "") or "",
+            "fecha_respuesta": datos.get("fecha_respuesta", "") or "",
+            "fecha_respuesta_iso": datos.get("fecha_respuesta_iso", "") or ""
+        })
+
+    df_bonus_respuestas = pd.DataFrame(
+        filas,
+        columns=[
+            "participante",
+            "partido_id",
+            "pregunta",
+            "respuesta",
+            "fecha_respuesta",
+            "fecha_respuesta_iso"
+        ]
+    )
+
+    conn.update(worksheet="bonus_respuestas", data=df_bonus_respuestas)
+
+
+def escribir_bonus_historial_en_sheets():
+    bonus = normalizar_bonus_data(st.session_state.db.get("bonus", bonus_base()))
+    filas = []
+
+    for item in bonus.get("historial", []):
+        respuestas = item.get("respuestas_participantes", {}) or {}
+        ganadores = {
+            g.get("participante", ""): int(g.get("puntos_ganados", 0))
+            for g in item.get("ganadores", []) or []
+        }
+
+        participantes_historial = set(respuestas.keys()) | set(ganadores.keys())
+        for participante in participantes_historial:
+            datos_respuesta = respuestas.get(participante, {}) or {}
+            filas.append({
+                "participante": participante,
+                "partido_id": "" if item.get("partido_id") in [None, ""] else int(item.get("partido_id")),
+                "pregunta": item.get("pregunta", "") or "",
+                "respuesta_participante": datos_respuesta.get("respuesta", "") or "",
+                "respuesta_correcta": item.get("respuesta_correcta", "") or "",
+                "puntos_ganados": int(ganadores.get(participante, 0)),
+                "fecha_resolucion": item.get("fecha_cierre", "") or ""
+            })
+
+    df_bonus_historial = pd.DataFrame(
+        filas,
+        columns=[
+            "participante",
+            "partido_id",
+            "pregunta",
+            "respuesta_participante",
+            "respuesta_correcta",
+            "puntos_ganados",
+            "fecha_resolucion"
+        ]
+    )
+
+    conn.update(worksheet="bonus_historial", data=df_bonus_historial)
+
 
 
 def persistir_db():
@@ -1176,28 +1513,26 @@ def persistir_db():
     try:
         escribir_configuracion_en_sheets()
         escribir_participantes_en_sheets()
+        escribir_pronosticos_en_sheets()
+        escribir_envios_por_fase_en_sheets()
         escribir_resultados_oficiales_en_sheets()
-        escribir_bonus_en_sheets()
+        escribir_bonus_config_en_sheets()
+        escribir_bonus_respuestas_en_sheets()
+        escribir_bonus_historial_en_sheets()
     except Exception as e:
-        st.warning(f"No se pudo sincronizar configuracion/participantes/resultados_oficiales/bonus con Google Sheets: {e}")
+        st.warning(
+            "No se pudo sincronizar completamente con Google Sheets "
+            f"(configuracion, participantes, pronosticos, envios_por_fase, resultados_oficiales, bonus): {e}"
+        )
 
 
 if "db" not in st.session_state:
     st.session_state.db = cargar_db()
     db_sheets = cargar_db_desde_sheets_base()
     st.session_state.db["configuracion"] = db_sheets.get("configuracion", st.session_state.db.get("configuracion", {}))
-    if db_sheets.get("participantes"):
-        st.session_state.db["participantes"] = db_sheets.get("participantes", {})
-    if db_sheets.get("resultados_oficiales"):
-        st.session_state.db["resultados_oficiales"] = db_sheets.get("resultados_oficiales", {})
-    if isinstance(db_sheets.get("bonus"), dict):
-        st.session_state.db["bonus"] = normalizar_bonus_data(db_sheets.get("bonus", bonus_base()))
-
-
-# if st.button("Prueba cargar base desde Google Sheets"):
-#    db_test = cargar_db_desde_sheets_base()
-#    st.write("Configuración desde Sheets:")
-#    st.write(db_test.get("configuracion", {}))
+    st.session_state.db["participantes"] = db_sheets.get("participantes", st.session_state.db.get("participantes", {}))
+    st.session_state.db["resultados_oficiales"] = db_sheets.get("resultados_oficiales", st.session_state.db.get("resultados_oficiales", {}))
+    st.session_state.db["bonus"] = db_sheets.get("bonus", st.session_state.db.get("bonus", bonus_base()))
 
 
 
