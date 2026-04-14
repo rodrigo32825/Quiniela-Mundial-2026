@@ -947,6 +947,19 @@ def cargar_db_desde_sheets_base():
 
 
 
+def refrescar_db_desde_sheets():
+    try:
+        db_sheets = cargar_db_desde_sheets_base()
+
+        if "db" not in st.session_state or not isinstance(st.session_state.db, dict):
+            st.session_state.db = estructura_base()
+
+        st.session_state.db["configuracion"] = db_sheets.get("configuracion", {})
+        st.session_state.db["participantes"] = db_sheets.get("participantes", {})
+    except Exception as e:
+        st.warning(f"No se pudo refrescar la base desde Google Sheets: {e}")
+
+
 def estructura_base():
     return {
         "configuracion": {
@@ -1181,9 +1194,14 @@ def autenticar_admin(usuario, clave):
 
 
 def autenticar_participante(nombre, clave):
+    refrescar_db_desde_sheets()
     participantes = obtener_participantes()
+
+    nombre = str(nombre).strip()
+    clave = str(clave).strip()
+
     if nombre in participantes:
-        return participantes[nombre].get("clave", "") == clave
+        return str(participantes[nombre].get("clave", "")).strip() == clave
     return False
 
 
