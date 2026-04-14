@@ -669,16 +669,14 @@ def construir_historial_envios_df(participante_data):
         if info:
             filas.append({
                 "Etapa": etapa,
-                "Fecha de envío": info.get("fecha_envio", ""),
-                "Grupo enviado": info.get("grupo", "") or ""
+                "Fecha de envío": info.get("fecha_envio", "")
             })
 
     for etapa, info in envios.items():
         if etapa not in orden_etapas:
             filas.append({
                 "Etapa": etapa,
-                "Fecha de envío": info.get("fecha_envio", ""),
-                "Grupo enviado": info.get("grupo", "") or ""
+                "Fecha de envío": info.get("fecha_envio", "")
             })
 
     return pd.DataFrame(filas)
