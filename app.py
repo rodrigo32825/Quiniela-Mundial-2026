@@ -21,10 +21,13 @@ st.set_page_config(
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 
+SHEETS_READ_TTL = 30
+SHEETS_REFRESH_COOLDOWN = 30
 
-def leer_worksheet_seguro(nombre_worksheet, **kwargs):
+
+def leer_worksheet_seguro(nombre_worksheet, ttl_segundos=SHEETS_READ_TTL, **kwargs):
     try:
-        df = conn.read(worksheet=nombre_worksheet, ttl=0, **kwargs)
+        df = conn.read(worksheet=nombre_worksheet, ttl=ttl_segundos, **kwargs)
         return pd.DataFrame(df).fillna("")
     except Exception:
         return pd.DataFrame()
@@ -318,7 +321,7 @@ BONOS_FAVORITOS = {
 ADMIN_USER = "admin"
 ADMIN_PASSWORD = "quiniela2026"
 
-DATA_FILE = "quiniela_data.json"
+DATA_FILE = None
 PARTIDOS_DIR = "data"
 PARTIDOS_FILE = os.path.join(PARTIDOS_DIR, "partidos.csv")
 
@@ -1181,25 +1184,35 @@ def cargar_db_desde_sheets_base():
 
 
 
-def refrescar_db_desde_sheets():
+def refrescar_db_desde_sheets(forzar=False, silencioso=True):
+    ahora = ahora_mx()
+
+    ultimo_refresh = st.session_state.get("ultimo_refresh_sheets")
+    if not forzar and ultimo_refresh is not None:
+        try:
+            segundos = (ahora - ultimo_refresh).total_seconds()
+            if segundos < SHEETS_REFRESH_COOLDOWN:
+                return False
+        except Exception:
+            pass
+
     try:
         db_sheets = cargar_db_desde_sheets_base()
 
         if "db" not in st.session_state or not isinstance(st.session_state.db, dict):
-            st.session_state.db = cargar_db()
+            st.session_state.db = estructura_base()
 
         st.session_state.db["configuracion"] = db_sheets.get("configuracion", st.session_state.db.get("configuracion", {}))
+        st.session_state.db["participantes"] = db_sheets.get("participantes", st.session_state.db.get("participantes", {}))
+        st.session_state.db["resultados_oficiales"] = db_sheets.get("resultados_oficiales", st.session_state.db.get("resultados_oficiales", {}))
+        st.session_state.db["bonus"] = db_sheets.get("bonus", st.session_state.db.get("bonus", bonus_base()))
 
-        if "participantes" in db_sheets:
-            st.session_state.db["participantes"] = db_sheets.get("participantes", {})
-
-        if "resultados_oficiales" in db_sheets:
-            st.session_state.db["resultados_oficiales"] = db_sheets.get("resultados_oficiales", {})
-
-        if "bonus" in db_sheets:
-            st.session_state.db["bonus"] = db_sheets.get("bonus", bonus_base())
-    except Exception:
-        pass
+        st.session_state.ultimo_refresh_sheets = ahora
+        return True
+    except Exception as e:
+        if not silencioso:
+            st.warning(f"No se pudo refrescar la base desde Google Sheets: {e}")
+        return False
 
 
 def estructura_base():
@@ -1225,47 +1238,7 @@ def participante_base(clave=""):
 
 
 def cargar_db():
-    if not os.path.exists(DATA_FILE):
-        return estructura_base()
-
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            db = json.load(f)
-    except Exception:
-        return estructura_base()
-
-    if "configuracion" not in db or not isinstance(db["configuracion"], dict):
-        db["configuracion"] = {"mostrar_pronosticos_publicos": False}
-
-    if "mostrar_pronosticos_publicos" not in db["configuracion"]:
-        db["configuracion"]["mostrar_pronosticos_publicos"] = False
-
-    if "participantes" not in db:
-        db["participantes"] = {}
-
-    if "resultados_oficiales" not in db:
-        db["resultados_oficiales"] = {}
-
-    if "bonus" not in db:
-        db["bonus"] = bonus_base()
-    else:
-        db["bonus"] = normalizar_bonus_data(db["bonus"])
-
-    for _, datos in db["participantes"].items():
-        if "clave" not in datos:
-            datos["clave"] = ""
-        if "favoritos_guardados" not in datos:
-            datos["favoritos_guardados"] = []
-        if "pronosticos_guardados" not in datos:
-            datos["pronosticos_guardados"] = []
-        if "fecha_envio" not in datos:
-            datos["fecha_envio"] = None
-        if "fecha_envio_iso" not in datos:
-            datos["fecha_envio_iso"] = None
-        if "envios_por_fase" not in datos or not isinstance(datos["envios_por_fase"], dict):
-            datos["envios_por_fase"] = {}
-
-    return db
+    return estructura_base()
 
 
 def escribir_configuracion_en_sheets():
@@ -1507,9 +1480,6 @@ def escribir_bonus_historial_en_sheets():
 
 
 def persistir_db():
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(st.session_state.db, f, ensure_ascii=False, indent=2)
-
     try:
         escribir_configuracion_en_sheets()
         escribir_participantes_en_sheets()
@@ -1519,20 +1489,21 @@ def persistir_db():
         escribir_bonus_config_en_sheets()
         escribir_bonus_respuestas_en_sheets()
         escribir_bonus_historial_en_sheets()
+        st.session_state.ultimo_refresh_sheets = ahora_mx()
+        return True
     except Exception as e:
         st.warning(
             "No se pudo sincronizar completamente con Google Sheets "
             f"(configuracion, participantes, pronosticos, envios_por_fase, resultados_oficiales, bonus): {e}"
         )
+        return False
 
 
 if "db" not in st.session_state:
-    st.session_state.db = cargar_db()
-    db_sheets = cargar_db_desde_sheets_base()
-    st.session_state.db["configuracion"] = db_sheets.get("configuracion", st.session_state.db.get("configuracion", {}))
-    st.session_state.db["participantes"] = db_sheets.get("participantes", st.session_state.db.get("participantes", {}))
-    st.session_state.db["resultados_oficiales"] = db_sheets.get("resultados_oficiales", st.session_state.db.get("resultados_oficiales", {}))
-    st.session_state.db["bonus"] = db_sheets.get("bonus", st.session_state.db.get("bonus", bonus_base()))
+    st.session_state.db = estructura_base()
+    refrescar_db_desde_sheets(forzar=True, silencioso=True)
+
+refrescar_db_desde_sheets(forzar=False, silencioso=True)
 
 
 
@@ -2630,7 +2601,7 @@ elif menu == "Participante":
                 grupo_seleccionado = None
 
                 if fase_seleccionada == "Fase de grupos":
-                    st.warning("Tus cambios se guardan automáticamente mientras captura.")
+                    st.warning("Guarda el borrador antes de cambiar de grupo. Cambiar de grupo sin guardar descarta lo que aún no se ha guardado en pantalla.")
                     grupos_disponibles = obtener_grupos_fase(partidos, fase_seleccionada)
 
                     if grupos_disponibles:
