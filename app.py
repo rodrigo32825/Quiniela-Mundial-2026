@@ -941,6 +941,53 @@ def cargar_db_desde_sheets_base():
 
     db["participantes"] = participantes
 
+    df_resultados = leer_worksheet_seguro("resultados_oficiales")
+    resultados_oficiales = {}
+
+    if not df_resultados.empty:
+        for _, row in df_resultados.iterrows():
+            partido_id = str(row.get("partido_id", "")).strip()
+            if not partido_id:
+                continue
+
+            try:
+                marcador_local = int(float(row.get("marcador_local", 0)))
+                marcador_visitante = int(float(row.get("marcador_visitante", 0)))
+            except Exception:
+                continue
+
+            resultados_oficiales[partido_id] = {
+                "marcador_local": marcador_local,
+                "marcador_visitante": marcador_visitante
+            }
+
+    db["resultados_oficiales"] = resultados_oficiales
+
+    df_bonus = leer_worksheet_seguro("bonus")
+    bonus_data = bonus_base()
+
+    if not df_bonus.empty:
+        bonus_json = ""
+
+        if "bonus_json" in df_bonus.columns and not df_bonus.empty:
+            bonus_json = str(df_bonus.iloc[0].get("bonus_json", "")).strip()
+        elif "clave" in df_bonus.columns and "valor" in df_bonus.columns:
+            for _, row in df_bonus.iterrows():
+                clave = str(row.get("clave", "")).strip()
+                if clave == "bonus_json":
+                    bonus_json = str(row.get("valor", "")).strip()
+                    break
+
+        if bonus_json:
+            try:
+                bonus_cargado = json.loads(bonus_json)
+                if isinstance(bonus_cargado, dict):
+                    bonus_data = normalizar_bonus_data(bonus_cargado)
+            except Exception:
+                pass
+
+    db["bonus"] = bonus_data
+
     return db
 
 
@@ -957,6 +1004,14 @@ def refrescar_db_desde_sheets():
         participantes_sheets = db_sheets.get("participantes", {})
         if participantes_sheets:
             st.session_state.db["participantes"] = participantes_sheets
+
+        resultados_sheets = db_sheets.get("resultados_oficiales", {})
+        if resultados_sheets:
+            st.session_state.db["resultados_oficiales"] = resultados_sheets
+
+        bonus_sheets = db_sheets.get("bonus")
+        if isinstance(bonus_sheets, dict):
+            st.session_state.db["bonus"] = normalizar_bonus_data(bonus_sheets)
     except Exception:
         pass
 
@@ -1072,6 +1127,47 @@ def escribir_participantes_en_sheets():
     conn.update(worksheet="participantes", data=df_participantes)
 
 
+def escribir_resultados_oficiales_en_sheets():
+    resultados = st.session_state.db.get("resultados_oficiales", {})
+    filas = []
+
+    for partido_id, datos in resultados.items():
+        try:
+            partido_id_str = str(partido_id)
+            marcador_local = int(datos.get("marcador_local", 0))
+            marcador_visitante = int(datos.get("marcador_visitante", 0))
+        except Exception:
+            continue
+
+        filas.append({
+            "partido_id": partido_id_str,
+            "marcador_local": marcador_local,
+            "marcador_visitante": marcador_visitante
+        })
+
+    df_resultados = pd.DataFrame(
+        filas,
+        columns=[
+            "partido_id",
+            "marcador_local",
+            "marcador_visitante"
+        ]
+    )
+
+    conn.update(worksheet="resultados_oficiales", data=df_resultados)
+
+
+def escribir_bonus_en_sheets():
+    bonus = normalizar_bonus_data(st.session_state.db.get("bonus", bonus_base()))
+
+    df_bonus = pd.DataFrame([
+        {
+            "bonus_json": json.dumps(bonus, ensure_ascii=False)
+        }
+    ], columns=["bonus_json"])
+
+    conn.update(worksheet="bonus", data=df_bonus)
+
 
 def persistir_db():
     with open(DATA_FILE, "w", encoding="utf-8") as f:
@@ -1080,8 +1176,10 @@ def persistir_db():
     try:
         escribir_configuracion_en_sheets()
         escribir_participantes_en_sheets()
+        escribir_resultados_oficiales_en_sheets()
+        escribir_bonus_en_sheets()
     except Exception as e:
-        st.warning(f"No se pudo sincronizar configuracion/participantes con Google Sheets: {e}")
+        st.warning(f"No se pudo sincronizar configuracion/participantes/resultados_oficiales/bonus con Google Sheets: {e}")
 
 
 if "db" not in st.session_state:
@@ -1090,6 +1188,10 @@ if "db" not in st.session_state:
     st.session_state.db["configuracion"] = db_sheets.get("configuracion", st.session_state.db.get("configuracion", {}))
     if db_sheets.get("participantes"):
         st.session_state.db["participantes"] = db_sheets.get("participantes", {})
+    if db_sheets.get("resultados_oficiales"):
+        st.session_state.db["resultados_oficiales"] = db_sheets.get("resultados_oficiales", {})
+    if isinstance(db_sheets.get("bonus"), dict):
+        st.session_state.db["bonus"] = normalizar_bonus_data(db_sheets.get("bonus", bonus_base()))
 
 
 # if st.button("Prueba cargar base desde Google Sheets"):
