@@ -722,7 +722,7 @@ def normalizar_bonus_data(bonus_data):
 def obtener_bonus():
     if "bonus" not in st.session_state.db or not isinstance(st.session_state.db.get("bonus"), dict):
         st.session_state.db["bonus"] = bonus_base()
-        persistir_db()
+        persistir_db("bonus")
     else:
         st.session_state.db["bonus"] = normalizar_bonus_data(st.session_state.db["bonus"])
     return st.session_state.db["bonus"]
@@ -769,7 +769,7 @@ def activar_bonus(partido_id, pregunta, opciones, puntos):
         "respuesta_correcta": None,
         "respuestas_participantes": {},
     })
-    persistir_db()
+    persistir_db("bonus")
 
 
 def cerrar_bonus_por_hora_si_aplica():
@@ -778,7 +778,7 @@ def cerrar_bonus_por_hora_si_aplica():
         ahora = ahora_mx()
         bonus["fecha_cierre"] = ahora.strftime("%d/%m/%Y %H:%M")
         bonus["fecha_cierre_iso"] = ahora.isoformat()
-        persistir_db()
+        persistir_db("bonus")
 
 
 def guardar_respuesta_bonus(participante, respuesta):
@@ -796,7 +796,7 @@ def guardar_respuesta_bonus(participante, respuesta):
         "fecha_respuesta": ahora.strftime("%d/%m/%Y %H:%M"),
         "fecha_respuesta_iso": ahora.isoformat()
     }
-    persistir_db()
+    persistir_db("bonus")
     return True, "Respuesta bonus guardada correctamente."
 
 
@@ -837,7 +837,7 @@ def resolver_bonus(respuesta_correcta):
     historial = bonus["historial"]
     st.session_state.db["bonus"] = bonus_base()
     st.session_state.db["bonus"]["historial"] = historial
-    persistir_db()
+    persistir_db("bonus")
     return True, "Bonus resuelto correctamente."
 
 
@@ -1479,23 +1479,38 @@ def escribir_bonus_historial_en_sheets():
 
 
 
-def persistir_db():
+def persistir_db(modulo=None):
+    modulos_validos = {
+        "configuracion": escribir_configuracion_en_sheets,
+        "participantes": escribir_participantes_en_sheets,
+        "pronosticos": escribir_pronosticos_en_sheets,
+        "envios": escribir_envios_por_fase_en_sheets,
+        "resultados": escribir_resultados_oficiales_en_sheets,
+        "bonus": lambda: (
+            escribir_bonus_config_en_sheets(),
+            escribir_bonus_respuestas_en_sheets(),
+            escribir_bonus_historial_en_sheets(),
+        ),
+    }
+
+    if modulo is None:
+        modulos_a_guardar = list(modulos_validos.keys())
+    elif isinstance(modulo, (list, tuple, set)):
+        modulos_a_guardar = list(modulo)
+    else:
+        modulos_a_guardar = [modulo]
+
     try:
-        escribir_configuracion_en_sheets()
-        escribir_participantes_en_sheets()
-        escribir_pronosticos_en_sheets()
-        escribir_envios_por_fase_en_sheets()
-        escribir_resultados_oficiales_en_sheets()
-        escribir_bonus_config_en_sheets()
-        escribir_bonus_respuestas_en_sheets()
-        escribir_bonus_historial_en_sheets()
+        for nombre_modulo in modulos_a_guardar:
+            funcion = modulos_validos.get(nombre_modulo)
+            if funcion is None:
+                raise ValueError(f"Módulo de persistencia no reconocido: {nombre_modulo}")
+            funcion()
+
         st.session_state.ultimo_refresh_sheets = ahora_mx()
         return True
     except Exception as e:
-        st.warning(
-            "No se pudo sincronizar completamente con Google Sheets "
-            f"(configuracion, participantes, pronosticos, envios_por_fase, resultados_oficiales, bonus): {e}"
-        )
+        st.warning(f"Error al sincronizar módulo(s) {modulos_a_guardar} con Google Sheets: {e}")
         return False
 
 
@@ -1564,13 +1579,13 @@ def borrar_archivo_calendario():
 
 def limpiar_resultados_oficiales():
     st.session_state.db["resultados_oficiales"] = {}
-    persistir_db()
+    persistir_db("resultados")
     return True, "Resultados oficiales eliminados correctamente."
 
 
 def reset_total_prueba():
     st.session_state.db = estructura_base()
-    persistir_db()
+    persistir_db(["configuracion", "participantes", "pronosticos", "envios", "resultados", "bonus"])
 
     try:
         if os.path.exists(PARTIDOS_FILE):
@@ -1647,7 +1662,7 @@ def crear_participante(nombre, clave):
         return False, "Ese participante ya existe."
 
     participantes[nombre] = participante_base(clave=clave)
-    persistir_db()
+    persistir_db("participantes")
     return True, f"Participante '{nombre}' creado correctamente."
 
 
@@ -1662,7 +1677,7 @@ def eliminar_participante(nombre):
     if st.session_state.participante_actual == nombre:
         cerrar_sesion_participante()
 
-    persistir_db()
+    persistir_db("participantes")
     return True, f"Participante '{nombre}' eliminado correctamente."
 
 
@@ -1676,7 +1691,7 @@ def cambiar_clave_participante(nombre, nueva_clave):
         return False, "La nueva clave no puede estar vacía."
 
     participantes[nombre]["clave"] = nueva_clave.strip()
-    persistir_db()
+    persistir_db("participantes")
     return True, f"Clave actualizada para '{nombre}'."
 
 
@@ -1701,7 +1716,7 @@ def renombrar_participante(nombre_actual, nuevo_nombre):
     if st.session_state.participante_actual == nombre_actual:
         st.session_state.participante_actual = nuevo_nombre
 
-    persistir_db()
+    persistir_db("participantes")
     return True, f"Participante renombrado a '{nuevo_nombre}'."
 
 # =========================================================
@@ -1749,7 +1764,7 @@ def guardar_resultado_oficial(partido_id, marcador_local, marcador_visitante):
         "marcador_local": int(marcador_local),
         "marcador_visitante": int(marcador_visitante)
     }
-    persistir_db()
+    persistir_db("resultados")
 
 
 def obtener_resultado_oficial(partido_id):
@@ -1770,7 +1785,7 @@ def obtener_pronostico_existente(participante_data, partido_id):
     )
 
 
-def guardar_pronosticos_fase(participante_data, pronosticos_fase):
+def guardar_pronosticos_fase(participante_data, pronosticos_fase, persistir=True):
     actuales = participante_data["pronosticos_guardados"]
     restantes = [x for x in actuales if int(x["id"]) not in {int(p["id"]) for p in pronosticos_fase}]
     participante_data["pronosticos_guardados"] = restantes + pronosticos_fase
@@ -1778,11 +1793,12 @@ def guardar_pronosticos_fase(participante_data, pronosticos_fase):
         participante_data["pronosticos_guardados"],
         key=lambda x: int(x["id"])
     )
-    persistir_db()
+    if persistir:
+        persistir_db("pronosticos")
 
 
 def guardar_envio_oficial(participante_data, pronosticos_fase, fase, grupo=None):
-    guardar_pronosticos_fase(participante_data, pronosticos_fase)
+    guardar_pronosticos_fase(participante_data, pronosticos_fase, persistir=False)
 
     ahora = ahora_mx()
     etapa_envio = normalizar_nombre_etapa_envio(fase)
@@ -1796,7 +1812,7 @@ def guardar_envio_oficial(participante_data, pronosticos_fase, fase, grupo=None)
     participante_data["fecha_envio"] = ahora.strftime("%d/%m/%Y %H:%M")
     participante_data["fecha_envio_iso"] = ahora.isoformat()
 
-    persistir_db()
+    persistir_db(["pronosticos", "envios"])
 
 # =========================================================
 # FAVORITOS, PUNTOS Y TABLA GENERAL
@@ -2189,7 +2205,7 @@ def resetear_borrador_fase_actual(participante_data, fase):
     etapa_envio = normalizar_nombre_etapa_envio(fase)
     if etapa_envio in participante_data.get("envios_por_fase", {}):
         del participante_data["envios_por_fase"][etapa_envio]
-    persistir_db()
+    persistir_db(["pronosticos", "envios"])
 
 
 def equipo_sigue_activo_por_fases_posteriores(equipo, df_partidos, resultados):
@@ -2564,7 +2580,7 @@ elif menu == "Participante":
 
                 if st.button("Guardar favoritos", use_container_width=True, disabled=favoritos_bloqueados()):
                     participante_data["favoritos_guardados"] = [favorito_1, favorito_2]
-                    persistir_db()
+                    persistir_db("participantes")
                     st.success("Tus equipos favoritos fueron guardados correctamente.")
                     st.rerun()
 
@@ -2904,7 +2920,7 @@ elif menu == "Admin":
 
         if st.button("Guardar configuración general", use_container_width=True):
             st.session_state.db["configuracion"]["mostrar_pronosticos_publicos"] = mostrar_pronosticos
-            persistir_db()
+            persistir_db("configuracion")
             st.success("Configuración actualizada correctamente.")
             st.rerun()
 
