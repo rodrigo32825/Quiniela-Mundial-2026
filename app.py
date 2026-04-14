@@ -20,10 +20,14 @@ st.set_page_config(
 )
 
 conn = st.connection("gsheets", type=GSheetsConnection)
-test_df = conn.read(worksheet="configuracion", usecols=[0, 1], ttl=0)
 
-# st.write("Prueba de conexión Google Sheets:")
-# st.dataframe(test_df, use_container_width=True)
+
+def leer_worksheet_seguro(nombre_worksheet, **kwargs):
+    try:
+        df = conn.read(worksheet=nombre_worksheet, ttl=0, **kwargs)
+        return pd.DataFrame(df).fillna("")
+    except Exception:
+        return pd.DataFrame()
 
 # =========================================================
 # DISEÑO / ASSETS
@@ -889,61 +893,55 @@ def construir_partidos_bonus_selector():
 def cargar_db_desde_sheets_base():
     db = estructura_base()
 
-    df = conn.read(worksheet="configuracion", ttl=0)
-    df = pd.DataFrame(df).fillna("")
+    df = leer_worksheet_seguro("configuracion")
 
     config = {"mostrar_pronosticos_publicos": False}
 
-    for _, row in df.iterrows():
-        clave = str(row.get("clave", "")).strip()
-        valor_raw = row.get("valor", "")
-        valor = str(valor_raw).strip().lower()
+    if not df.empty:
+        for _, row in df.iterrows():
+            clave = str(row.get("clave", "")).strip()
+            valor_raw = row.get("valor", "")
+            valor = str(valor_raw).strip().lower()
 
-        if clave == "mostrar_pronosticos_publicos":
-            config["mostrar_pronosticos_publicos"] = valor in ["true", "1", "1.0", "si", "sí", "yes"]
+            if clave == "mostrar_pronosticos_publicos":
+                config["mostrar_pronosticos_publicos"] = valor in ["true", "1", "1.0", "si", "sí", "yes"]
 
     db["configuracion"] = config
 
-
-    df_participantes = conn.read(worksheet="participantes", ttl=0)
-    df_participantes = pd.DataFrame(df_participantes).fillna("")
+    df_participantes = leer_worksheet_seguro("participantes")
 
     participantes = {}
 
-    for _, row in df_participantes.iterrows():
-        nombre = str(row.get("nombre", "")).strip()
-        if not nombre:
-            continue
+    if not df_participantes.empty:
+        for _, row in df_participantes.iterrows():
+            nombre = str(row.get("nombre", "")).strip()
+            if not nombre:
+                continue
 
-        clave = str(row.get("clave", "")).strip()
-        favoritos_json = str(row.get("favoritos_guardados_json", "")).strip()
-        fecha_envio = str(row.get("fecha_envio", "")).strip() or None
-        fecha_envio_iso = str(row.get("fecha_envio_iso", "")).strip() or None
+            clave = str(row.get("clave", "")).strip()
+            favoritos_json = str(row.get("favoritos_guardados_json", "")).strip()
+            fecha_envio = str(row.get("fecha_envio", "")).strip() or None
+            fecha_envio_iso = str(row.get("fecha_envio_iso", "")).strip() or None
 
-        try:
-            favoritos = json.loads(favoritos_json) if favoritos_json else []
-            if not isinstance(favoritos, list):
+            try:
+                favoritos = json.loads(favoritos_json) if favoritos_json else []
+                if not isinstance(favoritos, list):
+                    favoritos = []
+            except Exception:
                 favoritos = []
-        except Exception:
-            favoritos = []
 
-        participantes[nombre] = {
-            "clave": clave,
-            "favoritos_guardados": favoritos,
-            "pronosticos_guardados": [],
-            "fecha_envio": fecha_envio,
-            "fecha_envio_iso": fecha_envio_iso,
-            "envios_por_fase": {}
-        }
+            participantes[nombre] = {
+                "clave": clave,
+                "favoritos_guardados": favoritos,
+                "pronosticos_guardados": [],
+                "fecha_envio": fecha_envio,
+                "fecha_envio_iso": fecha_envio_iso,
+                "envios_por_fase": {}
+            }
 
     db["participantes"] = participantes
 
-
-
-
     return db
-
-
 
 
 
@@ -952,12 +950,15 @@ def refrescar_db_desde_sheets():
         db_sheets = cargar_db_desde_sheets_base()
 
         if "db" not in st.session_state or not isinstance(st.session_state.db, dict):
-            st.session_state.db = estructura_base()
+            st.session_state.db = cargar_db()
 
-        st.session_state.db["configuracion"] = db_sheets.get("configuracion", {})
-        st.session_state.db["participantes"] = db_sheets.get("participantes", {})
-    except Exception as e:
-        st.warning(f"No se pudo refrescar la base desde Google Sheets: {e}")
+        st.session_state.db["configuracion"] = db_sheets.get("configuracion", st.session_state.db.get("configuracion", {}))
+
+        participantes_sheets = db_sheets.get("participantes", {})
+        if participantes_sheets:
+            st.session_state.db["participantes"] = participantes_sheets
+    except Exception:
+        pass
 
 
 def estructura_base():
@@ -1084,7 +1085,11 @@ def persistir_db():
 
 
 if "db" not in st.session_state:
-    st.session_state.db = cargar_db_desde_sheets_base()
+    st.session_state.db = cargar_db()
+    db_sheets = cargar_db_desde_sheets_base()
+    st.session_state.db["configuracion"] = db_sheets.get("configuracion", st.session_state.db.get("configuracion", {}))
+    if db_sheets.get("participantes"):
+        st.session_state.db["participantes"] = db_sheets.get("participantes", {})
 
 
 # if st.button("Prueba cargar base desde Google Sheets"):
