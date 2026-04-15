@@ -2641,43 +2641,43 @@ elif menu == "Participante":
                     partidos_fase = partidos[partidos["fase"] == fase_seleccionada].copy()
 
                 pronosticos_temporales = []
-                opciones_marcador = ["—"] + list(range(0, 21))
 
                 for _, p in partidos_fase.iterrows():
                     pronostico_existente = obtener_pronostico_existente(participante_data, p["id"])
 
-                    g1_default = int(pronostico_existente["marcador_local"]) if pronostico_existente else "—"
-                    g2_default = int(pronostico_existente["marcador_visitante"]) if pronostico_existente else "—"
+                    g1_default = int(pronostico_existente["marcador_local"]) if pronostico_existente else 0
+                    g2_default = int(pronostico_existente["marcador_visitante"]) if pronostico_existente else 0
 
                     st.markdown(
-                        f"**{p['local']} vs {p['visitante']}**  \\n"
+                        f"**{p['local']} vs {p['visitante']}**  \n"
                         f"{p['ciudad']} — {p['fase']} — Grupo {p['grupo']} — {p['fecha']} {p['hora']}"
                     )
 
                     col1, col2 = st.columns(2)
 
-                    g1 = col1.selectbox(
+                    g1 = col1.number_input(
                         f"Goles de {p['local']} (Partido {p['id']})",
-                        options=opciones_marcador,
-                        index=opciones_marcador.index(g1_default),
+                        min_value=0,
+                        max_value=20,
+                        value=g1_default,
                         key=f"gol_local_{st.session_state.participante_actual}_{p['id']}",
                         disabled=fase_cerrada
                     )
 
-                    g2 = col2.selectbox(
+                    g2 = col2.number_input(
                         f"Goles de {p['visitante']} (Partido {p['id']})",
-                        options=opciones_marcador,
-                        index=opciones_marcador.index(g2_default),
+                        min_value=0,
+                        max_value=20,
+                        value=g2_default,
                         key=f"gol_visitante_{st.session_state.participante_actual}_{p['id']}",
                         disabled=fase_cerrada
                     )
 
-                    if g1 != "—" and g2 != "—":
-                        pronosticos_temporales.append({
-                            "id": int(p["id"]),
-                            "marcador_local": int(g1),
-                            "marcador_visitante": int(g2)
-                        })
+                    pronosticos_temporales.append({
+                        "id": int(p["id"]),
+                        "marcador_local": int(g1),
+                        "marcador_visitante": int(g2)
+                    })
 
                 ids_fase_actual = obtener_ids_partidos_fase(partidos, fase_seleccionada)
                 ids_visibles = {int(p["id"]) for p in pronosticos_temporales}
