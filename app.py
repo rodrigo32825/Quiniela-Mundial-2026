@@ -2641,12 +2641,13 @@ elif menu == "Participante":
                     partidos_fase = partidos[partidos["fase"] == fase_seleccionada].copy()
 
                 pronosticos_temporales = []
+                opciones_marcador = ["—"] + list(range(0, 21))
 
                 for _, p in partidos_fase.iterrows():
                     pronostico_existente = obtener_pronostico_existente(participante_data, p["id"])
 
-                    g1_default = int(pronostico_existente["marcador_local"]) if pronostico_existente else 0
-                    g2_default = int(pronostico_existente["marcador_visitante"]) if pronostico_existente else 0
+                    g1_default = int(pronostico_existente["marcador_local"]) if pronostico_existente else "—"
+                    g2_default = int(pronostico_existente["marcador_visitante"]) if pronostico_existente else "—"
 
                     st.markdown(
                         f"**{p['local']} vs {p['visitante']}**  \\n"
@@ -2655,69 +2656,81 @@ elif menu == "Participante":
 
                     col1, col2 = st.columns(2)
 
-                    g1 = col1.number_input(
+                    g1 = col1.selectbox(
                         f"Goles de {p['local']} (Partido {p['id']})",
-                        min_value=0,
-                        max_value=20,
-                        value=g1_default,
+                        options=opciones_marcador,
+                        index=opciones_marcador.index(g1_default),
                         key=f"gol_local_{st.session_state.participante_actual}_{p['id']}",
                         disabled=fase_cerrada
                     )
 
-                    g2 = col2.number_input(
+                    g2 = col2.selectbox(
                         f"Goles de {p['visitante']} (Partido {p['id']})",
-                        min_value=0,
-                        max_value=20,
-                        value=g2_default,
+                        options=opciones_marcador,
+                        index=opciones_marcador.index(g2_default),
                         key=f"gol_visitante_{st.session_state.participante_actual}_{p['id']}",
                         disabled=fase_cerrada
                     )
 
-                    pronosticos_temporales.append({
-                        "id": int(p["id"]),
-                        "marcador_local": int(g1),
-                        "marcador_visitante": int(g2)
-                    })
+                    if g1 != "—" and g2 != "—":
+                        pronosticos_temporales.append({
+                            "id": int(p["id"]),
+                            "marcador_local": int(g1),
+                            "marcador_visitante": int(g2)
+                        })
 
-                if not fase_cerrada and pronosticos_temporales:
-                    pronosticos_ordenados = sorted(pronosticos_temporales, key=lambda x: int(x["id"]))
-                    actuales_fase = [
-                        p for p in participante_data.get("pronosticos_guardados", [])
-                        if int(p["id"]) in obtener_ids_partidos_fase(partidos, fase_seleccionada)
-                    ]
-                    actuales_fase = sorted(actuales_fase, key=lambda x: int(x["id"]))
-                    if pronosticos_ordenados != actuales_fase:
-                        guardar_pronosticos_fase(participante_data, pronosticos_temporales)
+                ids_fase_actual = obtener_ids_partidos_fase(partidos, fase_seleccionada)
+                ids_visibles = {int(p["id"]) for p in pronosticos_temporales}
+                pronosticos_guardados_fase = [
+                    p for p in participante_data.get("pronosticos_guardados", [])
+                    if int(p["id"]) in ids_fase_actual and int(p["id"]) not in ids_visibles
+                ]
+                pronosticos_fase_para_validar = sorted(
+                    pronosticos_guardados_fase + pronosticos_temporales,
+                    key=lambda x: int(x["id"])
+                )
+                ids_capturados_fase = {int(p["id"]) for p in pronosticos_fase_para_validar}
+                total_fase = len(ids_fase_actual)
+                capturados = len(ids_capturados_fase)
+                puede_enviar_fase = total_fase > 0 and capturados == total_fase
 
-                st.info("Tus cambios se guardan automáticamente mientras capturas.")
+                st.info("Tus cambios en pantalla no se guardan hasta presionar el botón de guardar del grupo o fase actual.")
+                st.caption(f"Avance de la fase: {capturados} de {total_fase} partidos listos para envío")
 
-                capturados, total_fase = contar_avance_fase(participante_data, fase_seleccionada)
-                st.caption(f"Avance de la fase: {capturados} de {total_fase} partidos capturados")
+                etiqueta_guardar = "Guardar grupo actual" if fase_seleccionada == "Fase de grupos" else "Guardar fase actual"
 
-                col_g1, col_g2 = st.columns(2)
+                col_g1, col_g2, col_g3 = st.columns(3)
 
                 with col_g1:
+                    if st.button(etiqueta_guardar, use_container_width=True, disabled=fase_cerrada):
+                        if len(pronosticos_temporales) != len(partidos_fase):
+                            st.error("Debes seleccionar marcadores para todos los partidos visibles antes de guardar.")
+                        else:
+                            guardar_pronosticos_fase(participante_data, pronosticos_temporales)
+                            st.success(f"Se guardó correctamente el borrador de '{fase_seleccionada}'.")
+                            st.rerun()
+
+                with col_g2:
                     if st.button("Resetar borrador de la fase actual", use_container_width=True, disabled=fase_cerrada):
                         resetear_borrador_fase_actual(participante_data, fase_seleccionada)
                         st.success(f"Se limpió el borrador de la fase '{fase_seleccionada}'.")
                         st.rerun()
 
-                with col_g2:
-                    puede_enviar_fase = fase_completa_para_envio(participante_data, fase_seleccionada)
+                with col_g3:
                     if st.button("Enviar versión oficial de la fase", use_container_width=True, disabled=(fase_cerrada or not puede_enviar_fase)):
                         if len(participante_data["favoritos_guardados"]) != 2:
                             st.error("Debes guardar tus 2 equipos favoritos antes de enviar.")
                         else:
                             guardar_envio_oficial(
                                 participante_data,
-                                [p for p in participante_data["pronosticos_guardados"] if int(p["id"]) in obtener_ids_partidos_fase(partidos, fase_seleccionada)],
+                                pronosticos_fase_para_validar,
                                 fase_seleccionada,
                                 grupo=grupo_seleccionado
                             )
                             st.success(f"Versión oficial enviada para la fase '{fase_seleccionada}'.")
                             st.rerun()
 
-                if not fase_completa_para_envio(participante_data, fase_seleccionada):
+                if not puede_enviar_fase:
                     st.warning("Completa todos los partidos de la fase actual para habilitar el envío oficial.")
 
                 envio_fase_actual = obtener_envio_fase(participante_data, fase_seleccionada)
