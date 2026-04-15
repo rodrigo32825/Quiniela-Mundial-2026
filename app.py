@@ -1182,6 +1182,58 @@ def cargar_db_desde_sheets_base():
 
 
 
+def cargar_resultados_oficiales_desde_sheets(ttl_segundos=SHEETS_READ_TTL):
+    df_resultados = leer_worksheet_seguro("resultados_oficiales", ttl_segundos=ttl_segundos)
+    resultados_oficiales = {}
+
+    if not df_resultados.empty:
+        for _, row in df_resultados.iterrows():
+            partido_id = str(row.get("partido_id", "")).strip()
+            if not partido_id:
+                continue
+
+            try:
+                marcador_local = int(float(row.get("marcador_local", 0)))
+                marcador_visitante = int(float(row.get("marcador_visitante", 0)))
+            except Exception:
+                continue
+
+            resultados_oficiales[partido_id] = {
+                "marcador_local": marcador_local,
+                "marcador_visitante": marcador_visitante
+            }
+
+    return resultados_oficiales
+
+
+def refrescar_resultados_oficiales_desde_sheets(forzar=False, silencioso=True):
+    ahora = ahora_mx()
+
+    ultimo_refresh = st.session_state.get("ultimo_refresh_resultados_sheets")
+    if not forzar and ultimo_refresh is not None:
+        try:
+            segundos = (ahora - ultimo_refresh).total_seconds()
+            if segundos < SHEETS_REFRESH_COOLDOWN:
+                return False
+        except Exception:
+            pass
+
+    try:
+        ttl_lectura = 0 if forzar else SHEETS_READ_TTL
+        resultados = cargar_resultados_oficiales_desde_sheets(ttl_segundos=ttl_lectura)
+
+        if "db" not in st.session_state or not isinstance(st.session_state.db, dict):
+            st.session_state.db = estructura_base()
+
+        st.session_state.db["resultados_oficiales"] = resultados
+        st.session_state.ultimo_refresh_resultados_sheets = ahora
+        return True
+    except Exception as e:
+        if not silencioso:
+            st.warning(f"No se pudieron refrescar los resultados oficiales desde Google Sheets: {e}")
+        return False
+
+
 def refrescar_db_desde_sheets(forzar=False, silencioso=True):
     ahora = ahora_mx()
 
@@ -1206,6 +1258,7 @@ def refrescar_db_desde_sheets(forzar=False, silencioso=True):
         st.session_state.db["bonus"] = db_sheets.get("bonus", st.session_state.db.get("bonus", bonus_base()))
 
         st.session_state.ultimo_refresh_sheets = ahora
+        st.session_state.ultimo_refresh_resultados_sheets = ahora
         return True
     except Exception as e:
         if not silencioso:
@@ -1525,6 +1578,7 @@ def obtener_participantes():
 
 
 def obtener_resultados_oficiales():
+    refrescar_resultados_oficiales_desde_sheets(forzar=False, silencioso=True)
     return st.session_state.db["resultados_oficiales"]
 
 
@@ -1634,6 +1688,8 @@ def autenticar_participante(nombre, clave):
 def cerrar_sesion_participante():
     st.session_state.participante_actual = ""
     st.session_state.participante_autenticado = False
+    st.session_state.pop("ultimo_refresh_sheets", None)
+    st.session_state.pop("ultimo_refresh_resultados_sheets", None)
 
 
 def obtener_participante_actual():
@@ -1763,6 +1819,7 @@ def guardar_resultado_oficial(partido_id, marcador_local, marcador_visitante):
         "marcador_visitante": int(marcador_visitante)
     }
     persistir_db("resultados")
+    refrescar_resultados_oficiales_desde_sheets(forzar=True, silencioso=True)
 
 
 def obtener_resultado_oficial(partido_id):
@@ -2285,6 +2342,8 @@ def cerrar_toda_sesion():
     st.session_state.participante_autenticado = False
     st.session_state.panel_login_abierto = False
     st.session_state.vista_actual = "Inicio"
+    st.session_state.pop("ultimo_refresh_sheets", None)
+    st.session_state.pop("ultimo_refresh_resultados_sheets", None)
 
 
 def ir_a_panel_actual():
@@ -2759,6 +2818,7 @@ elif menu == "Participante":
 # RESULTADOS OFICIALES
 # =========================================================
 elif menu == "Resultados oficiales":
+    refrescar_resultados_oficiales_desde_sheets(forzar=True, silencioso=True)
     mostrar_encabezado_modulo(
         "RESULTADOS OFICIALES FIFA",
         "Consulta pública de marcadores capturados"
@@ -2919,6 +2979,8 @@ elif menu == "Admin":
         with col_admin_b:
             if st.button("Cerrar sesión admin", use_container_width=True):
                 st.session_state.admin_autenticado = False
+                st.session_state.pop("ultimo_refresh_sheets", None)
+                st.session_state.pop("ultimo_refresh_resultados_sheets", None)
                 st.rerun()
 
         st.markdown("## 0) Configuración general")
@@ -3296,6 +3358,7 @@ elif menu == "Admin":
 # TABLA GENERAL
 # =========================================================
 elif menu == "Tabla general":
+    refrescar_resultados_oficiales_desde_sheets(forzar=False, silencioso=True)
     mostrar_encabezado_modulo(
         "TABLA GENERAL PARTICIPANTES",
         "Ranking acumulado con desempates activos"
