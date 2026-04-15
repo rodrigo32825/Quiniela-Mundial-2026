@@ -2430,12 +2430,13 @@ if menu == "Inicio":
     mostrar_divider()
 
     st.markdown("### Cómo funciona el puntaje")
-    puntos_df = pd.DataFrame([
-        {"Concepto": "Aciertas ganador o empate", "Puntos": 1},
-        {"Concepto": "Aciertas marcador exacto", "Puntos extra": 2},
-        {"Concepto": "Marcador exacto total", "Total obtenido": 3},
-    ])
-    st.dataframe(puntos_df, use_container_width=True, hide_index=True)
+    st.markdown("""
+    <div style="background: rgba(0,0,0,0.40); padding: 16px 18px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.10); margin-bottom: 0.5rem;">
+        <p style="margin: 0 0 0.7rem 0;"><b>Aciertas ganador o empate:</b> <span style="color:#C9A227;">1 punto</span></p>
+        <p style="margin: 0 0 0.7rem 0;"><b>Aciertas marcador exacto:</b> <span style="color:#C9A227;">+2 puntos</span></p>
+        <p style="margin: 0;"><b>Total marcador exacto:</b> <span style="color:#C9A227;">3 puntos</span></p>
+    </div>
+    """, unsafe_allow_html=True)
 
     st.markdown("### Bonus por equipos favoritos")
     bonus_df = pd.DataFrame([
