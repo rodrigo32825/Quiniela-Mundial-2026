@@ -1663,7 +1663,7 @@ elif menu == "Participante":
                     g2_default = int(pronostico_base["marcador_visitante"]) if pronostico_base else 0
 
                     st.markdown(
-                        f"**{p['local']} vs {p['visitante']}**  
+                        f"""**{p['local']} vs {p['visitante']}**"""  
 "
                         f"{p['ciudad']} — {p['fase']} — Grupo {p['grupo']} — {p['fecha']} {p['hora']}"
                     )
