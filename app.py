@@ -144,6 +144,7 @@ def init_state():
         "draft_resultados": {},
         "draft_pronosticos": {},
         "draft_bonus": {},
+        "data_nonce": 0,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -171,7 +172,7 @@ def read_sheet(sheet_name: str, expected_columns: list[str]) -> pd.DataFrame:
     if conn is None:
         return pd.DataFrame(columns=expected_columns)
     try:
-        df = conn.read(worksheet=sheet_name, ttl=0)
+        df = conn.read(worksheet=sheet_name, ttl=60)
         if df is None:
             return pd.DataFrame(columns=expected_columns)
         df = pd.DataFrame(df)
@@ -237,6 +238,7 @@ def load_all_data_cached(cache_nonce: int = 0):
 
 def clear_data_cache():
     load_all_data_cached.clear()
+    st.session_state.data_nonce = st.session_state.get("data_nonce", 0) + 1
 
 
 def get_config_map(config_df: pd.DataFrame) -> dict:
@@ -693,6 +695,7 @@ def sidebar_nav():
     st.sidebar.write(f"**Rol:** {'Administrador' if st.session_state.is_admin else 'Participante'}")
     if st.session_state.is_admin:
         st.sidebar.success("Sesión de administrador activa")
+    st.sidebar.caption("Modo de lectura optimizado para Google Sheets")
 
     if st.sidebar.button("Cerrar sesión", use_container_width=True):
         st.session_state.logged_in = False
@@ -794,7 +797,7 @@ def render_admin(data: dict):
         st.divider()
         st.subheader("Auditoría / recalcular")
         if st.button("Recalcular y guardar todos los puntos", use_container_width=True):
-            recalculate_and_save_all_points(load_all_data())
+            recalculate_and_save_all_points(load_all_data_cached(st.session_state.get("data_nonce", 0)))
             st.success("Puntos recalculados y guardados.")
             st.rerun()
 
@@ -894,7 +897,7 @@ def render_official_results(data: dict):
     if st.button("Guardar resultados oficiales de este bloque", use_container_width=True):
         try:
             save_admin_results_batch(df_block, st.session_state.draft_resultados, data["resultados"])
-            recalculate_and_save_all_points(load_all_data())
+            recalculate_and_save_all_points(load_all_data_cached(st.session_state.get("data_nonce", 0)))
             st.success("Resultados oficiales guardados.")
             st.rerun()
         except Exception as e:
@@ -1018,7 +1021,7 @@ def render_predictions_capture(data: dict):
                     abiertos.append(row)
             abiertos_df = pd.DataFrame(abiertos) if abiertos else df_block.iloc[0:0].copy()
             save_user_predictions_batch(user, abiertos_df, st.session_state.draft_pronosticos, data["pronosticos"])
-            recalculate_and_save_all_points(load_all_data())
+            recalculate_and_save_all_points(load_all_data_cached(st.session_state.get("data_nonce", 0)))
             st.success("Pronósticos guardados correctamente.")
             st.rerun()
         except Exception as e:
@@ -1127,7 +1130,7 @@ def render_bonus(data: dict):
                     abiertos.append(row)
             abiertos_df = pd.DataFrame(abiertos) if abiertos else habilitados.iloc[0:0].copy()
             save_bonus_answers_batch(user, abiertos_df, st.session_state.draft_bonus, data["bonus_resp"])
-            recalculate_and_save_all_points(load_all_data())
+            recalculate_and_save_all_points(load_all_data_cached(st.session_state.get("data_nonce", 0)))
             st.success("Respuestas bonus guardadas.")
             st.rerun()
         except Exception as e:
@@ -1142,11 +1145,11 @@ def main():
         render_connection_help()
         return
 
-    data = load_all_data_cached(0)
+    data = load_all_data_cached(st.session_state.get("data_nonce", 0))
     if data["participantes"].empty:
         try:
             ensure_admin_exists(data)
-            data = load_all_data()
+            data = load_all_data_cached(st.session_state.get("data_nonce", 0))
         except Exception:
             pass
 
@@ -1155,7 +1158,7 @@ def main():
         return
 
     sidebar_nav()
-    data = load_all_data()
+    data = load_all_data_cached(st.session_state.get("data_nonce", 0))
     config_map = get_config_map(data["config"])
 
     if st.session_state.nav == "INICIO":
