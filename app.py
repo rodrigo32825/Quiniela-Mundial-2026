@@ -125,7 +125,13 @@ def serialize_df(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def to_bool(value) -> bool:
-    return normalize_text(value).lower() in ["1", "true", "si", "sí", "x", "yes"]
+    text = normalize_text(value).lower()
+    if text in ["1", "1.0", "true", "verdadero", "si", "sí", "x", "yes", "y"]:
+        return True
+    try:
+        return float(text) == 1.0
+    except Exception:
+        return False
 
 
 def init_state():
@@ -685,6 +691,8 @@ def sidebar_nav():
     st.sidebar.divider()
     st.sidebar.write(f"**Usuario:** {st.session_state.user_name}")
     st.sidebar.write(f"**Rol:** {'Administrador' if st.session_state.is_admin else 'Participante'}")
+    if st.session_state.is_admin:
+        st.sidebar.success("Sesión de administrador activa")
 
     if st.sidebar.button("Cerrar sesión", use_container_width=True):
         st.session_state.logged_in = False
