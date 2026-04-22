@@ -6,10 +6,6 @@ import pandas as pd
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 
-
-# =========================================================
-# CONFIGURACIÓN GENERAL
-# =========================================================
 APP_TZ = "America/Mexico_City"
 MEXICO_TZ = ZoneInfo(APP_TZ)
 
@@ -48,9 +44,6 @@ DEFAULT_ADMIN_PASS = "admin123"
 st.set_page_config(page_title="Quiniela Mundial 2026", layout="wide")
 
 
-# =========================================================
-# UTILIDADES
-# =========================================================
 def now_mx() -> datetime:
     return datetime.now(MEXICO_TZ)
 
@@ -103,16 +96,8 @@ def parse_match_datetime(row) -> datetime | None:
     if not fecha:
         return None
 
-    candidates = [
-        f"{fecha} {hora}".strip(),
-        fecha,
-    ]
-    formats = [
-        "%d/%m/%Y %H:%M",
-        "%Y-%m-%d %H:%M",
-        "%d/%m/%Y",
-        "%Y-%m-%d",
-    ]
+    candidates = [f"{fecha} {hora}".strip(), fecha]
+    formats = ["%d/%m/%Y %H:%M", "%Y-%m-%d %H:%M", "%d/%m/%Y", "%Y-%m-%d"]
 
     for text in candidates:
         for fmt in formats:
@@ -133,25 +118,23 @@ def ensure_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
 
 
 def serialize_df(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    for col in df.columns:
-        df[col] = df[col].fillna("").astype(str)
-    return df
+    out = df.copy()
+    for col in out.columns:
+        out[col] = out[col].fillna("").astype(str)
+    return out
 
 
 def to_bool(value) -> bool:
     return normalize_text(value).lower() in ["1", "true", "si", "sí", "x", "yes"]
 
 
-# =========================================================
-# SESSION STATE
-# =========================================================
 def init_state():
     defaults = {
         "logged_in": False,
         "user_name": "",
         "is_admin": False,
         "nav": "INICIO",
+        "nav_radio": "INICIO",
         "draft_resultados": {},
         "draft_pronosticos": {},
         "draft_bonus": {},
@@ -161,9 +144,6 @@ def init_state():
             st.session_state[key] = value
 
 
-# =========================================================
-# GOOGLE SHEETS
-# =========================================================
 def get_conn():
     try:
         return st.connection("gsheets", type=GSheetsConnection)
@@ -174,10 +154,10 @@ def get_conn():
 def render_connection_help():
     st.error("No se pudo conectar con Google Sheets.")
     st.code(
-        "# .streamlit/secrets.toml\n[connections.gsheets]\nspreadsheet = \"TU_URL_O_NOMBRE\"",
+        '# .streamlit/secrets.toml\n[connections.gsheets]\nspreadsheet = "TU_URL_O_NOMBRE"',
         language="toml",
     )
-    st.caption("En tu caso actual, puedes seguir usando la URL del archivo QUINIELA 2026 DB en secrets.")
+    st.caption("En tu caso actual puedes seguir usando la URL del archivo QUINIELA 2026 DB en secrets.")
 
 
 def read_sheet(sheet_name: str, expected_columns: list[str]) -> pd.DataFrame:
@@ -203,11 +183,8 @@ def write_sheet(sheet_name: str, df: pd.DataFrame):
     conn.update(worksheet=sheet_name, data=serialize_df(df))
 
 
-# =========================================================
-# ESTRUCTURAS BASE
-# =========================================================
 def load_all_data():
-    data = {
+    return {
         "config": read_sheet(SHEET_CONFIG, ["clave", "valor"]),
         "participantes": read_sheet(
             SHEET_PARTICIPANTES,
@@ -216,22 +193,9 @@ def load_all_data():
         "partidos": read_sheet(
             SHEET_PARTIDOS,
             [
-                "partido_id",
-                "fase",
-                "grupo",
-                "fecha",
-                "hora",
-                "ciudad",
-                "estadio",
-                "local",
-                "visitante",
-                "deadline_iso",
-                "bonus_habilitado",
-                "bonus_pregunta",
-                "bonus_opciones_json",
-                "bonus_puntos",
-                "bonus_respuesta_correcta",
-                "activo",
+                "partido_id", "fase", "grupo", "fecha", "hora", "ciudad", "estadio",
+                "local", "visitante", "deadline_iso", "bonus_habilitado", "bonus_pregunta",
+                "bonus_opciones_json", "bonus_puntos", "bonus_respuesta_correcta", "activo",
             ],
         ),
         "pronosticos": read_sheet(
@@ -245,15 +209,8 @@ def load_all_data():
         "puntos": read_sheet(
             SHEET_PUNTOS,
             [
-                "participante",
-                "partido_id",
-                "fase",
-                "acierto_resultado",
-                "exacto",
-                "puntos_base",
-                "puntos_favorito",
-                "total_partido",
-                "fecha_calculo_iso",
+                "participante", "partido_id", "fase", "acierto_resultado", "exacto",
+                "puntos_base", "puntos_favorito", "total_partido", "fecha_calculo_iso",
             ],
         ),
         "bonus_resp": read_sheet(
@@ -265,10 +222,9 @@ def load_all_data():
             ["participante", "partido_id", "puntos_bonus", "fecha_calculo_iso"],
         ),
     }
-    return data
 
 
-@st.cache_data(ttl=20, show_spinner=False)
+@st.cache_data(ttl=15, show_spinner=False)
 def load_all_data_cached(cache_nonce: int = 0):
     return load_all_data()
 
@@ -277,9 +233,6 @@ def clear_data_cache():
     load_all_data_cached.clear()
 
 
-# =========================================================
-# CONFIG MAP
-# =========================================================
 def get_config_map(config_df: pd.DataFrame) -> dict:
     result = {}
     for _, row in config_df.iterrows():
@@ -297,9 +250,13 @@ def upsert_config_value(config_df: pd.DataFrame, clave: str, valor: str) -> pd.D
     return config_df
 
 
-# =========================================================
-# LOGIN
-# =========================================================
+def get_participantes_solo_usuarios(participantes_df: pd.DataFrame) -> pd.DataFrame:
+    if participantes_df.empty:
+        return participantes_df.copy()
+    df = participantes_df.copy()
+    return df[~df["es_admin"].apply(to_bool)].reset_index(drop=True)
+
+
 def validate_login(participantes_df: pd.DataFrame, nombre: str, clave: str):
     nombre = nombre.strip().lower()
     clave = clave.strip()
@@ -315,10 +272,7 @@ def validate_login(participantes_df: pd.DataFrame, nombre: str, clave: str):
         return None
 
     payload = row.iloc[0].to_dict()
-    return {
-        "nombre": normalize_text(payload.get("nombre")),
-        "is_admin": to_bool(payload.get("es_admin")),
-    }
+    return {"nombre": normalize_text(payload.get("nombre")), "is_admin": to_bool(payload.get("es_admin"))}
 
 
 def login_box(participantes_df: pd.DataFrame):
@@ -342,54 +296,29 @@ def login_box(participantes_df: pd.DataFrame):
             st.error("Usuario o clave incorrectos.")
 
 
-# =========================================================
-# BOOTSTRAP
-# =========================================================
 def ensure_admin_exists(data: dict):
     participantes = data["participantes"].copy()
     if participantes.empty:
         participantes.loc[len(participantes)] = [
-            DEFAULT_ADMIN_USER,
-            DEFAULT_ADMIN_PASS,
-            "[]",
-            "",
-            "",
-            "1",
+            DEFAULT_ADMIN_USER, DEFAULT_ADMIN_PASS, "[]", "", "", "1"
         ]
         write_sheet(SHEET_PARTICIPANTES, participantes)
         clear_data_cache()
 
 
-# =========================================================
-# CARGA DE CALENDARIO
-# =========================================================
 def ingest_calendar_csv(df_csv: pd.DataFrame, partidos_df: pd.DataFrame) -> pd.DataFrame:
     partidos_df = ensure_columns(
         partidos_df,
         [
-            "partido_id",
-            "fase",
-            "grupo",
-            "fecha",
-            "hora",
-            "ciudad",
-            "estadio",
-            "local",
-            "visitante",
-            "deadline_iso",
-            "bonus_habilitado",
-            "bonus_pregunta",
-            "bonus_opciones_json",
-            "bonus_puntos",
-            "bonus_respuesta_correcta",
-            "activo",
+            "partido_id", "fase", "grupo", "fecha", "hora", "ciudad", "estadio",
+            "local", "visitante", "deadline_iso", "bonus_habilitado", "bonus_pregunta",
+            "bonus_opciones_json", "bonus_puntos", "bonus_respuesta_correcta", "activo",
         ],
     )
-
     df = df_csv.copy()
     df.columns = [normalize_text(c).lower() for c in df.columns]
 
-    base_mapper = {
+    mapper = {
         "id": "partido_id",
         "partido_id": "partido_id",
         "fase": "fase",
@@ -403,7 +332,7 @@ def ingest_calendar_csv(df_csv: pd.DataFrame, partidos_df: pd.DataFrame) -> pd.D
     }
 
     normalized = pd.DataFrame()
-    for source, target in base_mapper.items():
+    for source, target in mapper.items():
         if source in df.columns:
             normalized[target] = df[source]
 
@@ -411,8 +340,8 @@ def ingest_calendar_csv(df_csv: pd.DataFrame, partidos_df: pd.DataFrame) -> pd.D
     for col in needed:
         if col not in normalized.columns:
             normalized[col] = ""
-
     normalized = normalized[needed].copy()
+
     for col in needed:
         normalized[col] = normalized[col].astype(str).str.strip()
 
@@ -437,12 +366,8 @@ def ingest_calendar_csv(df_csv: pd.DataFrame, partidos_df: pd.DataFrame) -> pd.D
         mask = partidos_df["partido_id"] == pid
         if mask.any():
             preserve_cols = [
-                "bonus_habilitado",
-                "bonus_pregunta",
-                "bonus_opciones_json",
-                "bonus_puntos",
-                "bonus_respuesta_correcta",
-                "activo",
+                "bonus_habilitado", "bonus_pregunta", "bonus_opciones_json",
+                "bonus_puntos", "bonus_respuesta_correcta", "activo",
             ]
             for col in normalized.columns:
                 if col not in preserve_cols:
@@ -451,13 +376,9 @@ def ingest_calendar_csv(df_csv: pd.DataFrame, partidos_df: pd.DataFrame) -> pd.D
             partidos_df.loc[len(partidos_df)] = row.tolist()
 
     partidos_df = partidos_df.drop_duplicates(subset=["partido_id"], keep="last")
-    partidos_df = partidos_df.sort_values(by=["fase", "grupo", "partido_id"]).reset_index(drop=True)
-    return partidos_df
+    return partidos_df.sort_values(by=["fase", "grupo", "partido_id"]).reset_index(drop=True)
 
 
-# =========================================================
-# PUNTOS
-# =========================================================
 def result_type(local: int, visitante: int) -> str:
     if local > visitante:
         return "L"
@@ -470,30 +391,19 @@ def puntos_partido(pron_local: int, pron_visit: int, of_local: int, of_visit: in
     acierto = int(result_type(pron_local, pron_visit) == result_type(of_local, of_visit))
     exacto = int(pron_local == of_local and pron_visit == of_visit)
     puntos_base = acierto * 1 + exacto * 2
-    return {
-        "acierto_resultado": acierto,
-        "exacto": exacto,
-        "puntos_base": puntos_base,
-    }
+    return {"acierto_resultado": acierto, "exacto": exacto, "puntos_base": puntos_base}
 
 
 def recompute_points(data: dict):
-    participantes = data["participantes"].copy()
+    participantes = get_participantes_solo_usuarios(data["participantes"])
     partidos = data["partidos"].copy()
     pronosticos = data["pronosticos"].copy()
     resultados = data["resultados"].copy()
     bonus_resp = data["bonus_resp"].copy()
 
     puntos_cols = [
-        "participante",
-        "partido_id",
-        "fase",
-        "acierto_resultado",
-        "exacto",
-        "puntos_base",
-        "puntos_favorito",
-        "total_partido",
-        "fecha_calculo_iso",
+        "participante", "partido_id", "fase", "acierto_resultado", "exacto",
+        "puntos_base", "puntos_favorito", "total_partido", "fecha_calculo_iso",
     ]
     bonus_cols = ["participante", "partido_id", "puntos_bonus", "fecha_calculo_iso"]
 
@@ -514,8 +424,12 @@ def recompute_points(data: dict):
 
     ts = now_mx().isoformat()
     puntos_rows = []
+
     for _, row in merged.iterrows():
         participante = normalize_text(row.get("participante"))
+        if participante not in favoritos_map:
+            continue
+
         partido_id = normalize_text(row.get("partido_id"))
         fase = normalize_text(row.get("fase"))
 
@@ -562,18 +476,24 @@ def recompute_points(data: dict):
         bonus_resp["partido_id"] = bonus_resp["partido_id"].astype(str).str.strip()
 
         for _, row in bonus_resp.iterrows():
-            partido_id = normalize_text(row.get("partido_id"))
             participante = normalize_text(row.get("participante"))
+            if participante not in favoritos_map:
+                continue
+
+            partido_id = normalize_text(row.get("partido_id"))
             respuesta = normalize_text(row.get("respuesta"))
             match = partidos[partidos["partido_id"] == partido_id]
             if match.empty:
                 continue
+
             p_row = match.iloc[0]
             if not to_bool(p_row.get("bonus_habilitado")):
                 continue
+
             correcta = normalize_text(p_row.get("bonus_respuesta_correcta"))
             bonus_pts = normalize_int(p_row.get("bonus_puntos"), 0) or 0
             otorgado = bonus_pts if correcta and respuesta == correcta else 0
+
             bonus_rows.append(
                 {
                     "participante": participante,
@@ -583,14 +503,15 @@ def recompute_points(data: dict):
                 }
             )
 
-    puntos_df = pd.DataFrame(puntos_rows, columns=puntos_cols).drop_duplicates(subset=["participante", "partido_id"], keep="last")
-    bonus_df = pd.DataFrame(bonus_rows, columns=bonus_cols).drop_duplicates(subset=["participante", "partido_id"], keep="last")
+    puntos_df = pd.DataFrame(puntos_rows, columns=puntos_cols).drop_duplicates(
+        subset=["participante", "partido_id"], keep="last"
+    )
+    bonus_df = pd.DataFrame(bonus_rows, columns=bonus_cols).drop_duplicates(
+        subset=["participante", "partido_id"], keep="last"
+    )
     return puntos_df, bonus_df
 
 
-# =========================================================
-# GUARDADOS
-# =========================================================
 def save_admin_results_batch(partidos_block: pd.DataFrame, draft: dict, resultados_df: pd.DataFrame):
     resultados_df = ensure_columns(resultados_df, ["partido_id", "marcador_local", "marcador_visitante", "fecha_guardado_iso"])
     resultados_df["partido_id"] = resultados_df["partido_id"].astype(str).str.strip()
@@ -607,7 +528,9 @@ def save_admin_results_batch(partidos_block: pd.DataFrame, draft: dict, resultad
 
         mask = resultados_df["partido_id"] == pid
         if mask.any():
-            resultados_df.loc[mask, ["marcador_local", "marcador_visitante", "fecha_guardado_iso"]] = [str(local), str(visitante), ts]
+            resultados_df.loc[mask, ["marcador_local", "marcador_visitante", "fecha_guardado_iso"]] = [
+                str(local), str(visitante), ts
+            ]
         else:
             resultados_df.loc[len(resultados_df)] = [pid, str(local), str(visitante), ts]
 
@@ -617,7 +540,10 @@ def save_admin_results_batch(partidos_block: pd.DataFrame, draft: dict, resultad
 
 
 def save_user_predictions_batch(participante: str, partidos_block: pd.DataFrame, draft: dict, pronosticos_df: pd.DataFrame):
-    pronosticos_df = ensure_columns(pronosticos_df, ["participante", "partido_id", "marcador_local", "marcador_visitante", "fecha_guardado_iso"])
+    pronosticos_df = ensure_columns(
+        pronosticos_df,
+        ["participante", "partido_id", "marcador_local", "marcador_visitante", "fecha_guardado_iso"],
+    )
     pronosticos_df["participante"] = pronosticos_df["participante"].astype(str).str.strip()
     pronosticos_df["partido_id"] = pronosticos_df["partido_id"].astype(str).str.strip()
     ts = now_mx().isoformat()
@@ -633,7 +559,9 @@ def save_user_predictions_batch(participante: str, partidos_block: pd.DataFrame,
 
         mask = (pronosticos_df["participante"] == participante) & (pronosticos_df["partido_id"] == pid)
         if mask.any():
-            pronosticos_df.loc[mask, ["marcador_local", "marcador_visitante", "fecha_guardado_iso"]] = [str(local), str(visitante), ts]
+            pronosticos_df.loc[mask, ["marcador_local", "marcador_visitante", "fecha_guardado_iso"]] = [
+                str(local), str(visitante), ts
+            ]
         else:
             pronosticos_df.loc[len(pronosticos_df)] = [participante, pid, str(local), str(visitante), ts]
 
@@ -655,6 +583,7 @@ def save_bonus_answers_batch(participante: str, partidos_bonus: pd.DataFrame, dr
         answer = normalize_text(draft.get(pid))
         if not answer:
             continue
+
         mask = (bonus_df["participante"] == participante) & (bonus_df["partido_id"] == pid)
         if mask.any():
             bonus_df.loc[mask, ["respuesta", "fecha_guardado_iso"]] = [answer, ts]
@@ -667,10 +596,14 @@ def save_bonus_answers_batch(participante: str, partidos_bonus: pd.DataFrame, dr
 
 
 def save_favoritos(participantes_df: pd.DataFrame, participante: str, favoritos: list[str]):
-    participantes_df = ensure_columns(participantes_df, ["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"])
+    participantes_df = ensure_columns(
+        participantes_df,
+        ["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],
+    )
     mask = participantes_df["nombre"].astype(str).str.strip().eq(participante)
     if not mask.any():
         raise RuntimeError("Participante no encontrado.")
+
     participantes_df.loc[mask, "favoritos_guardados_json"] = json.dumps(favoritos, ensure_ascii=False)
     participantes_df.loc[mask, "fecha_envio"] = now_mx().strftime("%d/%m/%Y %H:%M")
     participantes_df.loc[mask, "fecha_envio_iso"] = now_mx().isoformat()
@@ -678,8 +611,11 @@ def save_favoritos(participantes_df: pd.DataFrame, participante: str, favoritos:
     clear_data_cache()
 
 
-def create_user(participantes_df: pd.DataFrame, nombre: str, clave: str, is_admin: bool = False):
-    participantes_df = ensure_columns(participantes_df, ["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"])
+def create_user(participantes_df: pd.DataFrame, nombre: str, clave: str):
+    participantes_df = ensure_columns(
+        participantes_df,
+        ["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],
+    )
     nombre = nombre.strip()
     clave = clave.strip()
     if not nombre or not clave:
@@ -689,7 +625,7 @@ def create_user(participantes_df: pd.DataFrame, nombre: str, clave: str, is_admi
     if not existing.empty:
         raise RuntimeError("Ese usuario ya existe.")
 
-    participantes_df.loc[len(participantes_df)] = [nombre, clave, "[]", "", "", "1" if is_admin else "0"]
+    participantes_df.loc[len(participantes_df)] = [nombre, clave, "[]", "", "", "0"]
     write_sheet(SHEET_PARTICIPANTES, participantes_df)
     clear_data_cache()
 
@@ -704,22 +640,9 @@ def save_bonus_setup(partidos_df: pd.DataFrame, partido_id: str, pregunta: str, 
     partidos_df = ensure_columns(
         partidos_df,
         [
-            "partido_id",
-            "fase",
-            "grupo",
-            "fecha",
-            "hora",
-            "ciudad",
-            "estadio",
-            "local",
-            "visitante",
-            "deadline_iso",
-            "bonus_habilitado",
-            "bonus_pregunta",
-            "bonus_opciones_json",
-            "bonus_puntos",
-            "bonus_respuesta_correcta",
-            "activo",
+            "partido_id", "fase", "grupo", "fecha", "hora", "ciudad", "estadio",
+            "local", "visitante", "deadline_iso", "bonus_habilitado", "bonus_pregunta",
+            "bonus_opciones_json", "bonus_puntos", "bonus_respuesta_correcta", "activo",
         ],
     )
     mask = partidos_df["partido_id"].astype(str).str.strip().eq(str(partido_id).strip())
@@ -742,36 +665,39 @@ def recalculate_and_save_all_points(data: dict):
     clear_data_cache()
 
 
-# =========================================================
-# SIDEBAR
-# =========================================================
 def sidebar_nav():
     st.sidebar.title("Menú")
-    options = ["INICIO", "CAPTURA DE PRONÓSTICOS", "RESULTADOS OFICIALES FIFA", "TABLA GENERAL DE PARTICIPANTES", "BONUS"]
+    options = ["INICIO", "RESULTADOS OFICIALES FIFA", "TABLA GENERAL DE PARTICIPANTES", "BONUS"]
     if st.session_state.is_admin:
         options.insert(1, "ADMINISTRACIÓN")
+    else:
+        options.insert(1, "CAPTURA DE PRONÓSTICOS")
 
-    default_index = options.index(st.session_state.nav) if st.session_state.nav in options else 0
-    selected = st.sidebar.radio("Ir a", options, index=default_index)
-    st.session_state.nav = selected
+    if st.session_state.get("nav_radio") not in options:
+        st.session_state.nav_radio = st.session_state.nav if st.session_state.nav in options else options[0]
+
+    selected = st.sidebar.radio("Ir a", options, key="nav_radio")
+
+    if selected != st.session_state.nav:
+        st.session_state.nav = selected
+        st.rerun()
 
     st.sidebar.divider()
     st.sidebar.write(f"**Usuario:** {st.session_state.user_name}")
     st.sidebar.write(f"**Rol:** {'Administrador' if st.session_state.is_admin else 'Participante'}")
+
     if st.sidebar.button("Cerrar sesión", use_container_width=True):
         st.session_state.logged_in = False
         st.session_state.user_name = ""
         st.session_state.is_admin = False
         st.session_state.nav = "INICIO"
+        st.session_state.nav_radio = "INICIO"
         st.session_state.draft_resultados = {}
         st.session_state.draft_pronosticos = {}
         st.session_state.draft_bonus = {}
         st.rerun()
 
 
-# =========================================================
-# VISTAS
-# =========================================================
 def render_inicio(config_map: dict):
     st.title("INICIO")
     st.subheader("Cómo funciona la quiniela")
@@ -783,10 +709,9 @@ def render_inicio(config_map: dict):
     st.write("Total por marcador exacto: **3 puntos**")
 
     st.markdown("### Bonus por equipos favoritos")
-    fav_df = pd.DataFrame([
-        {"Fase": fase, "Puntos extra por victoria del favorito": pts}
-        for fase, pts in BONUS_FAVORITOS.items()
-    ])
+    fav_df = pd.DataFrame(
+        [{"Fase": fase, "Puntos extra por victoria del favorito": pts} for fase, pts in BONUS_FAVORITOS.items()]
+    )
     st.dataframe(fav_df, use_container_width=True, hide_index=True)
 
     st.markdown("### Reglas importantes")
@@ -801,31 +726,28 @@ def render_inicio(config_map: dict):
     st.write(f"Actualmente {'sí' if visible else 'no'} está habilitada la visualización de pronósticos de otros participantes.")
 
 
-
 def render_admin(data: dict):
     st.title("ADMINISTRACIÓN")
     tab1, tab2, tab3, tab4 = st.tabs(["Usuarios", "Calendario", "Configuración", "Bonus"])
 
     with tab1:
         st.subheader("Alta de participantes")
-        c1, c2, c3 = st.columns([2, 2, 1])
+        c1, c2 = st.columns(2)
         with c1:
             nuevo_nombre = st.text_input("Nombre del usuario")
         with c2:
             nueva_clave = st.text_input("Clave del usuario")
-        with c3:
-            es_admin = st.checkbox("Es admin")
 
         if st.button("Crear usuario", use_container_width=True):
             try:
-                create_user(data["participantes"], nuevo_nombre, nueva_clave, es_admin)
+                create_user(data["participantes"], nuevo_nombre, nueva_clave)
                 st.success("Usuario creado correctamente.")
                 st.rerun()
             except Exception as e:
                 st.error(str(e))
 
         st.markdown("### Participantes")
-        st.dataframe(data["participantes"], use_container_width=True, hide_index=True)
+        st.dataframe(get_participantes_solo_usuarios(data["participantes"]), use_container_width=True, hide_index=True)
 
     with tab2:
         st.subheader("Cargar calendario por CSV")
@@ -855,6 +777,7 @@ def render_admin(data: dict):
         config_map = get_config_map(data["config"])
         visible_default = to_bool(config_map.get("ver_pronosticos_ajenos", "0"))
         visible = st.checkbox("Permitir ver pronósticos de otros participantes", value=visible_default)
+
         if st.button("Guardar configuración", use_container_width=True):
             save_config_visibility(data["config"], visible)
             st.success("Configuración guardada.")
@@ -872,35 +795,35 @@ def render_admin(data: dict):
         partidos = data["partidos"].copy()
         if partidos.empty:
             st.info("Primero carga el calendario.")
-        else:
-            partidos["label"] = partidos.apply(
-                lambda x: f"{x['partido_id']} | {x['local']} vs {x['visitante']} | {x['fase']} | {x['fecha']} {x['hora']}",
-                axis=1,
-            )
-            selected_label = st.selectbox("Selecciona un partido", partidos["label"].tolist())
-            row = partidos[partidos["label"] == selected_label].iloc[0]
-            partido_id = normalize_text(row.get("partido_id"))
+            return
 
-            pregunta = st.text_input("Pregunta bonus")
-            puntos = st.number_input("Puntos bonus", min_value=1, max_value=100, value=1, step=1)
-            o1 = st.text_input("Opción 1")
-            o2 = st.text_input("Opción 2")
-            o3 = st.text_input("Opción 3")
-            o4 = st.text_input("Opción 4")
-            o5 = st.text_input("Opción 5")
-            opciones = [x.strip() for x in [o1, o2, o3, o4, o5] if x.strip()]
-            correcta = st.selectbox("Respuesta correcta", options=opciones if opciones else [""])
+        partidos["label"] = partidos.apply(
+            lambda x: f"{x['partido_id']} | {x['local']} vs {x['visitante']} | {x['fase']} | {x['fecha']} {x['hora']}",
+            axis=1,
+        )
+        selected_label = st.selectbox("Selecciona un partido", partidos["label"].tolist())
+        row = partidos[partidos["label"] == selected_label].iloc[0]
+        partido_id = normalize_text(row.get("partido_id"))
 
-            if st.button("Guardar bonus del partido", use_container_width=True):
-                try:
-                    if not pregunta.strip() or len(opciones) < 2:
-                        raise RuntimeError("Captura la pregunta y al menos dos opciones.")
-                    save_bonus_setup(data["partidos"], partido_id, pregunta, opciones, int(puntos), correcta)
-                    st.success("Bonus guardado correctamente.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(str(e))
+        pregunta = st.text_input("Pregunta bonus")
+        puntos = st.number_input("Puntos bonus", min_value=1, max_value=100, value=1, step=1)
+        o1 = st.text_input("Opción 1")
+        o2 = st.text_input("Opción 2")
+        o3 = st.text_input("Opción 3")
+        o4 = st.text_input("Opción 4")
+        o5 = st.text_input("Opción 5")
+        opciones = [x.strip() for x in [o1, o2, o3, o4, o5] if x.strip()]
+        correcta = st.selectbox("Respuesta correcta", options=opciones if opciones else [""])
 
+        if st.button("Guardar bonus del partido", use_container_width=True):
+            try:
+                if not pregunta.strip() or len(opciones) < 2:
+                    raise RuntimeError("Captura la pregunta y al menos dos opciones.")
+                save_bonus_setup(data["partidos"], partido_id, pregunta, opciones, int(puntos), correcta)
+                st.success("Bonus guardado correctamente.")
+                st.rerun()
+            except Exception as e:
+                st.error(str(e))
 
 
 def render_official_results(data: dict):
@@ -929,47 +852,45 @@ def render_official_results(data: dict):
         hide_index=True,
     )
 
-    if st.session_state.is_admin:
-        st.markdown("### Captura de resultados oficiales")
-        grupos = sorted([g for g in df_fase["grupo"].astype(str).fillna("").unique().tolist() if g != ""])
-        if not grupos:
-            grupos = ["Fase completa"]
-            df_fase["grupo"] = "Fase completa"
+    if not st.session_state.is_admin:
+        return
 
-        grupo_sel = st.selectbox("Grupo / bloque a capturar", grupos)
-        df_block = df_fase[df_fase["grupo"] == grupo_sel].copy()
+    st.markdown("### Captura de resultados oficiales")
+    grupos = sorted([g for g in df_fase["grupo"].astype(str).fillna("").unique().tolist() if g != ""])
+    if not grupos:
+        grupos = ["Fase completa"]
+        df_fase["grupo"] = "Fase completa"
 
-        for _, row in df_block.iterrows():
-            pid = normalize_text(row.get("partido_id"))
-            prev_local = normalize_int(row.get("marcador_local"), 0) or 0
-            prev_visit = normalize_int(row.get("marcador_visitante"), 0) or 0
-            draft_local = normalize_int(st.session_state.draft_resultados.get(pid, {}).get("marcador_local"), prev_local) or 0
-            draft_visit = normalize_int(st.session_state.draft_resultados.get(pid, {}).get("marcador_visitante"), prev_visit) or 0
+    grupo_sel = st.selectbox("Grupo / bloque a capturar", grupos)
+    df_block = df_fase[df_fase["grupo"] == grupo_sel].copy()
 
-            c1, c2, c3, c4 = st.columns([2, 1, 1, 2])
-            with c1:
-                st.write(f"**{row['local']}**")
-            with c2:
-                val_l = st.number_input(f"res_l_{pid}", min_value=0, step=1, value=draft_local, label_visibility="collapsed")
-            with c3:
-                val_v = st.number_input(f"res_v_{pid}", min_value=0, step=1, value=draft_visit, label_visibility="collapsed")
-            with c4:
-                st.write(f"**{row['visitante']}**")
+    for _, row in df_block.iterrows():
+        pid = normalize_text(row.get("partido_id"))
+        prev_local = normalize_int(row.get("marcador_local"), 0) or 0
+        prev_visit = normalize_int(row.get("marcador_visitante"), 0) or 0
+        draft_local = normalize_int(st.session_state.draft_resultados.get(pid, {}).get("marcador_local"), prev_local) or 0
+        draft_visit = normalize_int(st.session_state.draft_resultados.get(pid, {}).get("marcador_visitante"), prev_visit) or 0
 
-            st.session_state.draft_resultados[pid] = {
-                "marcador_local": val_l,
-                "marcador_visitante": val_v,
-            }
+        c1, c2, c3, c4 = st.columns([2, 1, 1, 2])
+        with c1:
+            st.write(f"**{row['local']}**")
+        with c2:
+            val_l = st.number_input(f"res_l_{pid}", min_value=0, step=1, value=draft_local, label_visibility="collapsed")
+        with c3:
+            val_v = st.number_input(f"res_v_{pid}", min_value=0, step=1, value=draft_visit, label_visibility="collapsed")
+        with c4:
+            st.write(f"**{row['visitante']}**")
 
-        if st.button("Guardar resultados oficiales de este bloque", use_container_width=True):
-            try:
-                save_admin_results_batch(df_block, st.session_state.draft_resultados, data["resultados"])
-                recalculate_and_save_all_points(load_all_data())
-                st.success("Resultados oficiales guardados.")
-                st.rerun()
-            except Exception as e:
-                st.error(str(e))
+        st.session_state.draft_resultados[pid] = {"marcador_local": val_l, "marcador_visitante": val_v}
 
+    if st.button("Guardar resultados oficiales de este bloque", use_container_width=True):
+        try:
+            save_admin_results_batch(df_block, st.session_state.draft_resultados, data["resultados"])
+            recalculate_and_save_all_points(load_all_data())
+            st.success("Resultados oficiales guardados.")
+            st.rerun()
+        except Exception as e:
+            st.error(str(e))
 
 
 def get_user_predictions_view(data: dict, participante: str) -> pd.DataFrame:
@@ -987,10 +908,17 @@ def get_user_predictions_view(data: dict, participante: str) -> pd.DataFrame:
     bonus["participante"] = bonus["participante"].astype(str).str.strip()
 
     df = partidos.merge(pron[pron["participante"] == participante], on="partido_id", how="left")
-    df = df.merge(puntos[puntos["participante"] == participante][["partido_id", "puntos_base", "puntos_favorito", "total_partido"]], on="partido_id", how="left")
-    df = df.merge(bonus[bonus["participante"] == participante][["partido_id", "puntos_bonus"]], on="partido_id", how="left")
+    df = df.merge(
+        puntos[puntos["participante"] == participante][["partido_id", "puntos_base", "puntos_favorito", "total_partido"]],
+        on="partido_id",
+        how="left",
+    )
+    df = df.merge(
+        bonus[bonus["participante"] == participante][["partido_id", "puntos_bonus"]],
+        on="partido_id",
+        how="left",
+    )
     return df
-
 
 
 def render_predictions_capture(data: dict):
@@ -998,7 +926,7 @@ def render_predictions_capture(data: dict):
 
     partidos = data["partidos"].copy()
     pron = data["pronosticos"].copy()
-    participantes = data["participantes"].copy()
+    participantes = get_participantes_solo_usuarios(data["participantes"])
     user = st.session_state.user_name
 
     if partidos.empty:
@@ -1022,7 +950,7 @@ def render_predictions_capture(data: dict):
         try:
             if len(favoritos) != 2:
                 raise RuntimeError("Debes seleccionar exactamente 2 equipos favoritos.")
-            save_favoritos(participantes, user, favoritos)
+            save_favoritos(data["participantes"], user, favoritos)
             st.success("Favoritos guardados.")
             st.rerun()
         except Exception as e:
@@ -1071,10 +999,7 @@ def render_predictions_capture(data: dict):
             st.caption(f"{row['fecha']} {row['hora']}")
             st.caption("Cerrado" if cerrado else "Abierto")
 
-        st.session_state.draft_pronosticos[pid] = {
-            "marcador_local": val_l,
-            "marcador_visitante": val_v,
-        }
+        st.session_state.draft_pronosticos[pid] = {"marcador_local": val_l, "marcador_visitante": val_v}
 
     if st.button("Guardar pronósticos de este bloque", use_container_width=True):
         try:
@@ -1092,11 +1017,10 @@ def render_predictions_capture(data: dict):
             st.error(str(e))
 
 
-
 def render_tabla_general(data: dict):
     st.title("TABLA GENERAL DE PARTICIPANTES")
 
-    participantes = data["participantes"].copy()
+    participantes = get_participantes_solo_usuarios(data["participantes"])
     puntos = data["puntos"].copy()
     bonus_puntos = data["bonus_puntos"].copy()
     config_map = get_config_map(data["config"])
@@ -1132,31 +1056,22 @@ def render_tabla_general(data: dict):
 
     if visible or st.session_state.is_admin:
         st.markdown("### Ver pronósticos de un participante")
-        participante_sel = st.selectbox("Participante", options=participantes_list)
-        detalle = get_user_predictions_view(data, participante_sel)
-        cols = [
-            "fase",
-            "grupo",
-            "fecha",
-            "hora",
-            "local",
-            "visitante",
-            "marcador_local",
-            "marcador_visitante",
-            "puntos_base",
-            "puntos_favorito",
-            "total_partido",
-            "puntos_bonus",
-        ]
-        cols_exist = [c for c in cols if c in detalle.columns]
-        st.dataframe(detalle[cols_exist], use_container_width=True, hide_index=True)
+        if participantes_list:
+            participante_sel = st.selectbox("Participante", options=participantes_list)
+            detalle = get_user_predictions_view(data, participante_sel)
+            cols = [
+                "fase", "grupo", "fecha", "hora", "local", "visitante", "marcador_local",
+                "marcador_visitante", "puntos_base", "puntos_favorito", "total_partido", "puntos_bonus",
+            ]
+            cols_exist = [c for c in cols if c in detalle.columns]
+            st.dataframe(detalle[cols_exist], use_container_width=True, hide_index=True)
     else:
         st.info("La visualización de pronósticos de otros participantes aún no está habilitada.")
 
 
-
 def render_bonus(data: dict):
     st.title("BONUS")
+
     partidos = data["partidos"].copy()
     bonus_resp = data["bonus_resp"].copy()
     user = st.session_state.user_name
@@ -1189,13 +1104,10 @@ def render_bonus(data: dict):
         st.write(normalize_text(row.get("bonus_pregunta")))
 
         if opciones:
-            selected = st.radio(
-                f"bonus_{pid}",
-                options=opciones,
-                index=opciones.index(prev_val) if prev_val in opciones else 0,
-                disabled=cerrado,
-            )
+            index = opciones.index(prev_val) if prev_val in opciones else 0
+            selected = st.radio(f"bonus_{pid}", options=opciones, index=index, disabled=cerrado)
             st.session_state.draft_bonus[pid] = selected
+
         st.divider()
 
     if st.button("Guardar respuestas bonus", use_container_width=True):
@@ -1214,9 +1126,6 @@ def render_bonus(data: dict):
             st.error(str(e))
 
 
-# =========================================================
-# MAIN
-# =========================================================
 def main():
     init_state()
 
