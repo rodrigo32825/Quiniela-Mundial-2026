@@ -1266,25 +1266,34 @@ def obtener_resultado_oficial_con_borrador(partido_id):
     return obtener_resultado_oficial(partido_id)
 
 
-def guardar_resultado_oficial_en_sheets_por_partido(partido_id, marcador_local, marcador_visitante):
+def guardar_resultados_oficiales_borrador(partidos_a_guardar):
     if "db" not in st.session_state or not isinstance(st.session_state.db, dict):
         st.session_state.db = estructura_base()
 
-    partido_id_str = str(int(partido_id))
+    resultados = st.session_state.db.get("resultados_oficiales", {})
     borrador = obtener_borrador_resultados_oficiales()
 
-    st.session_state.db.setdefault("resultados_oficiales", {})
-    st.session_state.db["resultados_oficiales"][partido_id_str] = {
-        "marcador_local": int(marcador_local),
-        "marcador_visitante": int(marcador_visitante)
-    }
+    ids_guardados = []
+    for _, p in partidos_a_guardar.iterrows():
+        partido_id_str = str(int(p["id"]))
+        datos = borrador.get(partido_id_str)
+        if not datos:
+            continue
 
-    ok = persistir_db("resultados")
-    if ok:
-        refrescar_resultados_oficiales_desde_sheets(forzar=True, silencioso=True)
+        resultados[partido_id_str] = {
+            "marcador_local": int(datos.get("marcador_local", 0)),
+            "marcador_visitante": int(datos.get("marcador_visitante", 0))
+        }
+        ids_guardados.append(partido_id_str)
+
+    st.session_state.db["resultados_oficiales"] = resultados
+    persistir_db("resultados")
+    refrescar_resultados_oficiales_desde_sheets(forzar=True, silencioso=True)
+
+    for partido_id_str in ids_guardados:
         borrador.pop(partido_id_str, None)
 
-    return ok
+    return len(ids_guardados)
 
 
 def estructura_base():
@@ -1708,6 +1717,7 @@ def autenticar_participante(nombre, clave):
 def cerrar_sesion_participante():
     st.session_state.participante_actual = ""
     st.session_state.participante_autenticado = False
+    st.session_state.pop("ultimo_refresh_sheets", None)
     st.session_state.pop("ultimo_refresh_resultados_sheets", None)
     st.session_state.pop("borrador_resultados_oficiales", None)
 
@@ -2362,6 +2372,7 @@ def cerrar_toda_sesion():
     st.session_state.participante_autenticado = False
     st.session_state.panel_login_abierto = False
     st.session_state.vista_actual = "Inicio"
+    st.session_state.pop("ultimo_refresh_sheets", None)
     st.session_state.pop("ultimo_refresh_resultados_sheets", None)
     st.session_state.pop("borrador_resultados_oficiales", None)
 
@@ -2369,8 +2380,10 @@ def cerrar_toda_sesion():
 def ir_a_panel_actual():
     if st.session_state.admin_autenticado:
         st.session_state.vista_actual = "Admin"
+        refrescar_datos_por_modulo("Admin", forzar=True)
     elif st.session_state.participante_autenticado:
         st.session_state.vista_actual = "Participante"
+        refrescar_datos_por_modulo("Participante", forzar=True)
 
 
 def mostrar_barra_superior_acceso():
@@ -2441,6 +2454,7 @@ def mostrar_panel_login_superior():
                     st.session_state.admin_autenticado = False
                     st.session_state.panel_login_abierto = False
                     st.session_state.vista_actual = "Participante"
+                    refrescar_datos_por_modulo("Participante", forzar=True)
                     st.success(f"Bienvenido, {participante_seleccionado}")
                     st.rerun()
                 else:
@@ -2457,10 +2471,23 @@ def mostrar_panel_login_superior():
                 st.session_state.participante_autenticado = False
                 st.session_state.panel_login_abierto = False
                 st.session_state.vista_actual = "Admin"
+                refrescar_datos_por_modulo("Admin", forzar=True)
                 st.success("Acceso admin correcto.")
                 st.rerun()
             else:
                 st.error("Usuario o clave de admin incorrectos.")
+
+
+def refrescar_datos_por_modulo(destino, forzar=True):
+    destino = str(destino or "").strip()
+
+    if destino in ["Tabla general", "Participante", "Admin"]:
+        refrescar_db_desde_sheets(forzar=forzar, silencioso=True)
+        refrescar_resultados_oficiales_desde_sheets(forzar=forzar, silencioso=True)
+    elif destino == "Resultados oficiales":
+        refrescar_resultados_oficiales_desde_sheets(forzar=forzar, silencioso=True)
+    elif destino == "Bonus":
+        refrescar_db_desde_sheets(forzar=forzar, silencioso=True)
 
 
 # =========================================================
@@ -2481,6 +2508,7 @@ if menu_sidebar != st.session_state.menu_sidebar_last:
         st.session_state.vista_actual = "Tabla general"
     else:
         st.session_state.vista_actual = menu_sidebar
+    refrescar_datos_por_modulo(st.session_state.vista_actual, forzar=True)
 
 mostrar_barra_superior_acceso()
 
@@ -2600,6 +2628,7 @@ elif menu == "Participante":
                     st.session_state.participante_actual = participante_seleccionado
                     st.session_state.participante_autenticado = True
                     st.session_state.vista_actual = "Participante"
+                    refrescar_datos_por_modulo("Participante", forzar=True)
                     st.success(f"Bienvenido, {participante_seleccionado}")
                     st.rerun()
                 else:
@@ -2843,8 +2872,6 @@ elif menu == "Resultados oficiales":
         "Consulta pública de marcadores capturados"
     )
 
-    refrescar_resultados_oficiales_desde_sheets(forzar=True, silencioso=True)
-
     if partidos.empty:
         st.warning("Aún no hay partidos cargados.")
     else:
@@ -2991,6 +3018,7 @@ elif menu == "Admin":
             if autenticar_admin(usuario_admin, clave_admin):
                 st.session_state.admin_autenticado = True
                 st.session_state.vista_actual = "Admin"
+                refrescar_datos_por_modulo("Admin", forzar=True)
                 st.success("Acceso admin correcto.")
                 st.rerun()
             else:
@@ -3336,16 +3364,18 @@ elif menu == "Admin":
                 )
 
                 actualizar_borrador_resultado_oficial(p["id"], r1, r2)
+                st.divider()
 
-                if st.button(f"Guardar resultado oficial partido {p['id']}", key=f"guardar_resultado_oficial_{p['id']}", use_container_width=True):
-                    ok = guardar_resultado_oficial_en_sheets_por_partido(p["id"], r1, r2)
-                    if ok:
-                        st.success(f"Resultado oficial guardado para {p['local']} vs {p['visitante']}.")
+            if not partidos_admin.empty:
+                etiqueta_guardado_resultados = "Guardar marcadores grupo actual" if fase_admin == "Fase de grupos" and grupo_admin != "Todos" else "Guardar marcadores fase actual"
+
+                if st.button(etiqueta_guardado_resultados, use_container_width=True, key="guardar_resultados_oficiales_lote"):
+                    guardados = guardar_resultados_oficiales_borrador(partidos_admin)
+                    if guardados > 0:
+                        st.success(f"Se guardaron correctamente {guardados} marcadores oficiales.")
                         st.rerun()
                     else:
-                        st.error("No se pudo guardar el resultado oficial en Google Sheets.")
-
-                st.divider()
+                        st.warning("No hubo cambios nuevos por guardar en los partidos visibles.")
 
         st.markdown("## 4) Resultados oficiales capturados")
         resultados = obtener_resultados_oficiales()
@@ -3388,7 +3418,6 @@ elif menu == "Tabla general":
         "Ranking acumulado con desempates activos"
     )
 
-    refrescar_resultados_oficiales_desde_sheets(forzar=True, silencioso=True)
     tabla_general_df = construir_tabla_general()
 
     if tabla_general_df.empty:
