@@ -163,9 +163,9 @@ def get_conn():
 def render_connection_help():
     st.error("No se pudo conectar con Google Sheets.")
     st.code(
-        """# .streamlit/secrets.toml
+        '# .streamlit/secrets.toml
 [connections.gsheets]
-spreadsheet = \"QUINIELA 2026 DB\""" ,
+spreadsheet = "QUINIELA 2026 DB"',
         language="toml",
     )
     st.caption(
