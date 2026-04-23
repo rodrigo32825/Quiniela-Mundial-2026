@@ -698,15 +698,23 @@ def sidebar_nav():
     st.sidebar.caption("Modo de lectura optimizado para Google Sheets")
 
     if st.sidebar.button("Cerrar sesión", use_container_width=True):
-        st.session_state.logged_in = False
-        st.session_state.user_name = ""
-        st.session_state.is_admin = False
-        st.session_state.nav = "INICIO"
-        st.session_state.nav_radio = "INICIO"
-        st.session_state.draft_resultados = {}
-        st.session_state.draft_pronosticos = {}
-        st.session_state.draft_bonus = {}
-        st.rerun()
+    keys_to_clear = [
+        "logged_in",
+        "user_name",
+        "is_admin",
+        "nav",
+        "nav_radio",
+        "draft_resultados",
+        "draft_pronosticos",
+        "draft_bonus",
+        "data_nonce"
+    ]
+
+    for k in keys_to_clear:
+        if k in st.session_state:
+            del st.session_state[k]
+
+    st.rerun()
 
 
 def render_inicio(config_map: dict):
