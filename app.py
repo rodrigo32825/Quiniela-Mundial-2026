@@ -448,6 +448,11 @@ def recompute_points(data: dict):
 
         calc = puntos_partido(p_local, p_visit, o_local, o_visit)
 
+
+
+
+
+
         favorito_pts = 0
         favoritos = favoritos_map.get(participante, [])
         local = normalize_text(row.get("local"))
@@ -456,12 +461,16 @@ def recompute_points(data: dict):
         ganador = ""
         if o_local > o_visit:
             ganador = local
-        elif o_visit > o_local:
-            ganador = visitante
+	elif o_visit > o_local:
+    ganador = visitante
 
-        if ganador and ganador in favoritos:
-            fase_normalizada = fase.strip().lower()
-            bonus_map = {k.lower(): v for k, v in BONUS_FAVORITOS.items()}
+        favoritos_normalizados = [str(f).strip().lower() for f in favoritos]
+        ganador_normalizado = ganador.strip().lower() if ganador else ""
+
+        fase_normalizada = fase.strip().lower()
+        bonus_map = {k.strip().lower(): v for k, v in BONUS_FAVORITOS.items()}
+
+        if ganador and ganador_normalizado in favoritos_normalizados:
             favorito_pts = bonus_map.get(fase_normalizada, 0)
 
         total = calc["puntos_base"] + favorito_pts
