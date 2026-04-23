@@ -831,10 +831,26 @@ def main():
         login_box(participantes_df)
         return
 
+    try:
     data = load_all_data_cached(st.session_state.get("data_nonce", 0))
-    sidebar_nav()
+except Exception:
+    st.session_state.logged_in = False
+    st.session_state.user_name = ""
+    st.session_state.is_admin = False
+    st.session_state.nav = "INICIO"
+    if "nav_radio" in st.session_state:
+        del st.session_state["nav_radio"]
+    st.rerun()
+
+sidebar_nav()
+
+try:
     data = load_all_data_cached(st.session_state.get("data_nonce", 0))
-    config_map = get_config_map(data["config"])
+except Exception:
+    st.error("Error temporal recargando datos desde Google Sheets.")
+    st.stop()
+
+config_map = get_config_map(data["config"])
 
     if st.session_state.nav == "INICIO":
         render_inicio(config_map)
