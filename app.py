@@ -1,10 +1,10 @@
-# VERSION V5 OPTIMIZADA
-# Cambios clave:
-# - Fix logout (no crash)
-# - Menos lecturas a Google Sheets
-# - Sin recálculo automático innecesario
-# - Cache más largo
-# - Uso de nonce para control de refresh
+# V6 - RESULTADOS + BASE ESTABLE
+# Incluye:
+# - Login
+# - Admin funcional (crear usuarios + cargar resultados)
+# - Resultados oficiales guardados en Sheets
+# - Sin errores de logout
+# - Optimizado para no exceder cuota
 
 import streamlit as st
 import pandas as pd
@@ -12,114 +12,120 @@ from streamlit_gsheets import GSheetsConnection
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-APP_TZ = ZoneInfo("America/Mexico_City")
+TZ = ZoneInfo("America/Mexico_City")
 
-# ---------- INIT STATE ----------
-def init_state():
-    defaults = {
-        "logged_in": False,
-        "user_name": "",
-        "is_admin": False,
-        "nav": "INICIO",
-        "data_nonce": 0,
-    }
-    for k, v in defaults.items():
+def now():
+    return datetime.now(TZ).isoformat()
+
+def init():
+    for k, v in {
+        "logged": False,
+        "user": "",
+        "admin": False,
+        "nonce": 0
+    }.items():
         if k not in st.session_state:
             st.session_state[k] = v
 
-# ---------- CONNECTION ----------
-def get_conn():
-    try:
-        return st.connection("gsheets", type=GSheetsConnection)
-    except:
-        return None
+def conn():
+    return st.connection("gsheets", type=GSheetsConnection)
 
-# ---------- CACHE ----------
 @st.cache_data(ttl=300)
-def read_sheet(name):
-    conn = get_conn()
-    return conn.read(worksheet=name)
+def read(name):
+    return conn().read(worksheet=name)
 
-def clear_cache():
-    read_sheet.clear()
-    st.session_state.data_nonce += 1
+def write(name, df):
+    conn().update(worksheet=name, data=df)
+    read.clear()
 
-# ---------- LOGIN ----------
 def login(df):
-    st.title("Quiniela 2026")
     u = st.text_input("Usuario")
     p = st.text_input("Clave", type="password")
-
     if st.button("Entrar"):
-        row = df[(df["nombre"] == u) & (df["clave"] == p)]
-        if not row.empty:
-            st.session_state.logged_in = True
-            st.session_state.user_name = u
-            st.session_state.is_admin = str(row.iloc[0]["es_admin"]) in ["1", "1.0", "True"]
+        r = df[(df["nombre"]==u)&(df["clave"]==p)]
+        if not r.empty:
+            st.session_state.logged=True
+            st.session_state.user=u
+            st.session_state.admin=str(r.iloc[0]["es_admin"]) in ["1","1.0","True"]
             st.rerun()
-        else:
-            st.error("Credenciales incorrectas")
 
-# ---------- SIDEBAR ----------
 def sidebar():
-    opciones = ["INICIO", "RESULTADOS", "TABLA", "BONUS"]
-    if st.session_state.is_admin:
-        opciones.insert(1, "ADMIN")
-
-    sel = st.sidebar.radio("Menú", opciones)
-
+    opts=["INICIO","RESULTADOS"]
+    if st.session_state.admin:
+        opts.insert(1,"ADMIN")
+    nav=st.sidebar.radio("Menú",opts)
     if st.sidebar.button("Cerrar sesión"):
-        for k in list(st.session_state.keys()):
-            del st.session_state[k]
+        st.session_state.clear()
         st.rerun()
+    return nav
 
-    return sel
-
-# ---------- ADMIN ----------
-def admin(df_part):
+def admin(df_part, df_res):
     st.header("ADMIN")
 
-    nombre = st.text_input("Nuevo usuario")
-    clave = st.text_input("Clave")
-
-    if st.button("Crear"):
-        nuevo = pd.DataFrame([[nombre, clave, "0"]], columns=["nombre","clave","es_admin"])
-        df_part = pd.concat([df_part, nuevo])
-        get_conn().update(worksheet="participantes", data=df_part)
-        clear_cache()
+    # crear usuario
+    st.subheader("Crear usuario")
+    u=st.text_input("Nuevo usuario")
+    p=st.text_input("Clave")
+    if st.button("Crear usuario"):
+        new=pd.DataFrame([[u,p,"0"]],columns=["nombre","clave","es_admin"])
+        df=pd.concat([df_part,new])
+        write("participantes",df)
         st.success("Usuario creado")
 
-# ---------- MAIN ----------
-def main():
-    init_state()
+    st.divider()
 
-    conn = get_conn()
-    if not conn:
-        st.error("No conexión")
+    # resultados
+    st.subheader("Capturar resultados")
+
+    try:
+        df_partidos=read("partidos")
+    except:
+        st.warning("No hay hoja partidos")
         return
 
-    df_part = read_sheet("participantes")
+    for i,row in df_partidos.iterrows():
+        col1,col2,col3,col4=st.columns([2,1,1,2])
+        with col1: st.write(row["local"])
+        with col2: l=st.number_input(f"l{i}",0,10,0)
+        with col3: v=st.number_input(f"v{i}",0,10,0)
+        with col4: st.write(row["visitante"])
 
-    if not st.session_state.logged_in:
+        if st.button(f"Guardar {i}"):
+            df_res=df_res[df_res["partido_id"]!=row["partido_id"]]
+            df_res.loc[len(df_res)]=[row["partido_id"],l,v,now()]
+            write("resultados_oficiales",df_res)
+            st.success("Guardado")
+            st.rerun()
+
+def resultados(df_partidos, df_res):
+    st.header("Resultados oficiales")
+
+    df=df_partidos.merge(df_res,on="partido_id",how="left")
+
+    st.dataframe(df[["local","visitante","marcador_local","marcador_visitante"]])
+
+def main():
+    init()
+
+    df_part=read("participantes")
+
+    if not st.session_state.logged:
         login(df_part)
         return
 
-    nav = sidebar()
+    nav=sidebar()
 
-    if nav == "INICIO":
-        st.title("Inicio")
+    if nav=="INICIO":
+        st.title("Quiniela 2026")
 
-    if nav == "ADMIN":
-        admin(df_part)
+    if nav=="ADMIN":
+        df_res=read("resultados_oficiales")
+        admin(df_part,df_res)
 
-    if nav == "RESULTADOS":
-        st.title("Resultados")
+    if nav=="RESULTADOS":
+        df_partidos=read("partidos")
+        df_res=read("resultados_oficiales")
+        resultados(df_partidos,df_res)
 
-    if nav == "TABLA":
-        st.title("Tabla")
-
-    if nav == "BONUS":
-        st.title("Bonus")
-
-if __name__ == "__main__":
+if __name__=="__main__":
     main()
