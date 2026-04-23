@@ -170,17 +170,17 @@ def render_connection_help():
 def read_sheet(sheet_name: str, expected_columns: list[str]) -> pd.DataFrame:
     conn = get_conn()
     if conn is None:
-        return pd.DataFrame(columns=expected_columns)
+        raise RuntimeError("No se encontró la conexión a Google Sheets.")
     try:
-        df = conn.read(worksheet=sheet_name, ttl=10)
+        df = conn.read(worksheet=sheet_name, ttl=60)
         if df is None:
             return pd.DataFrame(columns=expected_columns)
         df = pd.DataFrame(df)
         df.columns = [normalize_text(c) for c in df.columns]
         df = ensure_columns(df, expected_columns)
         return df.fillna("")
-    except Exception:
-        return pd.DataFrame(columns=expected_columns)
+    except Exception as e:
+        raise RuntimeError(f"Error leyendo hoja '{sheet_name}': {e}")
 
 
 def write_sheet(sheet_name: str, df: pd.DataFrame):
@@ -448,7 +448,6 @@ def recompute_points(data: dict):
 
         calc = puntos_partido(p_local, p_visit, o_local, o_visit)
 
-
         favorito_pts = 0
         favoritos = favoritos_map.get(participante, [])
         local = normalize_text(row.get("local"))
@@ -458,18 +457,10 @@ def recompute_points(data: dict):
         if o_local > o_visit:
             ganador = local
         elif o_visit > o_local:
-            ganador = visitante					
-	
+            ganador = visitante
 
-
-        favoritos_normalizados = [str(f).strip().lower() for f in favoritos]
-        ganador_normalizado = ganador.strip().lower() if ganador else ""
-
-        fase_normalizada = fase.strip().lower()
-        bonus_map = {k.strip().lower(): v for k, v in BONUS_FAVORITOS.items()}
-
-        if ganador and ganador_normalizado in favoritos_normalizados:
-            favorito_pts = bonus_map.get(fase_normalizada, 0)
+        if ganador and ganador in favoritos:
+            favorito_pts = BONUS_FAVORITOS.get(fase, 0)
 
         total = calc["puntos_base"] + favorito_pts
 
@@ -706,24 +697,16 @@ def sidebar_nav():
         st.sidebar.success("Sesión de administrador activa")
     st.sidebar.caption("Modo de lectura optimizado para Google Sheets")
 
-if st.sidebar.button("Cerrar sesión", use_container_width=True):
-    keys_to_clear = [
-        "logged_in",
-        "user_name",
-        "is_admin",
-        "nav",
-        "nav_radio",
-        "draft_resultados",
-        "draft_pronosticos",
-        "draft_bonus",
-        "data_nonce"
-    ]
-
-    for k in keys_to_clear:
-        if k in st.session_state:
-            del st.session_state[k]
-
-    st.rerun()
+    if st.sidebar.button("Cerrar sesión", use_container_width=True):
+        st.session_state.logged_in = False
+        st.session_state.user_name = ""
+        st.session_state.is_admin = False
+        st.session_state.nav = "INICIO"
+        st.session_state.nav_radio = "INICIO"
+        st.session_state.draft_resultados = {}
+        st.session_state.draft_pronosticos = {}
+        st.session_state.draft_bonus = {}
+        st.rerun()
 
 
 def render_inicio(config_map: dict):
