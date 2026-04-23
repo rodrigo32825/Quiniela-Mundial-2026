@@ -180,8 +180,9 @@ def read_sheet(sheet_name: str, expected_columns: list[str]) -> pd.DataFrame:
         df = ensure_columns(df, expected_columns)
         return df.fillna("")
     except Exception as e:
-        raise RuntimeError(f"Error leyendo hoja '{sheet_name}': {e}")
-
+        if sheet_name == SHEET_PARTICIPANTES:
+            raise RuntimeError(f"Error leyendo hoja '{sheet_name}': {e}")
+        return pd.DataFrame(columns=expected_columns)
 
 def write_sheet(sheet_name: str, df: pd.DataFrame):
     conn = get_conn()
