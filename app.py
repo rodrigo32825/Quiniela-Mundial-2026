@@ -110,6 +110,50 @@ def parse_match_datetime(row) -> datetime | None:
     return None
 
 
+def get_phase_min_datetime(partidos_df: pd.DataFrame, fase: str) -> datetime | None:
+    if partidos_df is None or partidos_df.empty:
+        return None
+    df = partidos_df[partidos_df["fase"].astype(str).str.strip() == str(fase).strip()].copy()
+    if df.empty:
+        return None
+    dts = [parse_match_datetime(row) for _, row in df.iterrows()]
+    dts = [dt for dt in dts if dt is not None]
+    return min(dts) if dts else None
+
+
+def is_phase_closed(partidos_df: pd.DataFrame, fase: str) -> bool:
+    phase_min_dt = get_phase_min_datetime(partidos_df, fase)
+    return phase_min_dt is not None and now_mx() >= phase_min_dt
+
+
+def sort_partidos_df(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df.copy()
+    out = df.copy()
+    out["_fase_order"] = out["fase"].astype(str).apply(lambda x: FASES_ORDEN.index(x) if x in FASES_ORDEN else 999)
+    out["_grupo_order"] = out["grupo"].astype(str).fillna("").replace("nan", "")
+    out["fecha_partido_dt"] = out.apply(parse_match_datetime, axis=1)
+    out["_fecha_sort"] = out["fecha_partido_dt"].apply(lambda x: x if x is not None else datetime.max.replace(tzinfo=MEXICO_TZ))
+    out = out.sort_values(by=["_fase_order", "_grupo_order", "_fecha_sort", "partido_id"], ascending=[True, True, True, True])
+    return out.drop(columns=["_fase_order", "_grupo_order", "_fecha_sort"], errors="ignore").reset_index(drop=True)
+
+
+def get_active_bonus_df(partidos_df: pd.DataFrame) -> pd.DataFrame:
+    if partidos_df is None or partidos_df.empty:
+        return partidos_df.copy()
+    df = partidos_df.copy()
+    df["partido_id"] = df["partido_id"].astype(str).str.strip()
+    df = df[
+        df["bonus_habilitado"].astype(str).apply(to_bool)
+        & df["bonus_pregunta"].astype(str).str.strip().ne("")
+    ].copy()
+    if df.empty:
+        return df
+    df = sort_partidos_df(df)
+    df["bonus_resuelto"] = df["bonus_respuesta_correcta"].astype(str).str.strip().ne("")
+    return df
+
+
 def ensure_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     df = df.copy()
     for col in columns:
@@ -422,7 +466,7 @@ def ingest_calendar_csv(df_csv: pd.DataFrame, partidos_df: pd.DataFrame) -> pd.D
             partidos_df.loc[len(partidos_df)] = row.tolist()
 
     partidos_df = partidos_df.drop_duplicates(subset=["partido_id"], keep="last")
-    return partidos_df.sort_values(by=["fase", "grupo", "partido_id"]).reset_index(drop=True)
+    return sort_partidos_df(partidos_df)
 
 
 def result_type(local: int, visitante: int) -> str:
@@ -818,7 +862,7 @@ def render_inicio(config_map: dict):
     st.write("Cada participante elige **2 equipos favoritos** y no cambian durante todo el mundial.")
     st.write("Los favoritos dan puntos extra solo por **victoria en tiempo regular**.")
     st.write("Los resultados oficiales también se capturan en tiempo regular.")
-    st.write("Cada fase tiene fecha límite con base en la hora de **México**.")
+    st.write("Cada fase se bloquea con base en la fecha mínima de esa fase, usando la hora de **México**.")
     st.write("Las preguntas bonus quedan fijas una vez guardadas.")
 
     visible = to_bool(config_map.get("ver_pronosticos_ajenos", "0"))
@@ -870,7 +914,10 @@ def render_admin(data: dict):
                     st.error(str(e))
 
         st.markdown("### Calendario actual")
-        st.dataframe(data["partidos"], use_container_width=True, hide_index=True)
+        calendario_actual = sort_partidos_df(data["partidos"]).copy()
+        if "fecha_partido_dt" in calendario_actual.columns:
+            calendario_actual = calendario_actual.drop(columns=["fecha_partido_dt"], errors="ignore")
+        st.dataframe(calendario_actual, use_container_width=True, hide_index=True)
 
     with tab3:
         st.subheader("Configuración")
@@ -931,19 +978,15 @@ def render_admin(data: dict):
         st.divider()
         st.markdown("### Bloque 2: Resolver bonus activo")
 
-        bonus_activos = partidos[
-            partidos["bonus_habilitado"].astype(str).apply(to_bool)
-            & partidos["bonus_pregunta"].astype(str).str.strip().ne("")
-        ].copy()
+        bonus_activos = get_active_bonus_df(partidos)
 
         if bonus_activos.empty:
             st.info("Aún no hay bonuses activos configurados.")
         else:
-            bonus_activos["resuelto"] = bonus_activos["bonus_respuesta_correcta"].astype(str).str.strip().ne("")
             mostrar_resueltos = st.checkbox("Mostrar también bonuses ya resueltos", value=False)
 
             if not mostrar_resueltos:
-                bonus_activos = bonus_activos[~bonus_activos["resuelto"]].copy()
+                bonus_activos = bonus_activos[~bonus_activos["bonus_resuelto"]].copy()
 
             if bonus_activos.empty:
                 st.info("No hay bonuses activos pendientes por resolver.")
@@ -978,7 +1021,7 @@ def render_admin(data: dict):
                 st.write(f"**Opciones:** {', '.join(bonus_opciones) if bonus_opciones else 'Sin opciones'}")
                 st.write(f"**Puntos bonus:** {normalize_text(bonus_row.get('bonus_puntos'))}")
                 st.write(f"**Respuestas registradas:** {respuestas_count}")
-                estado_bonus = "Resuelto" if normalize_text(bonus_row.get("bonus_respuesta_correcta")) else "Pendiente de resolver"
+                estado_bonus = "Resuelto" if to_bool(bonus_row.get("bonus_resuelto")) else "Pendiente de resolver"
                 st.write(f"**Estatus:** {estado_bonus}")
 
                 respuesta_correcta = st.selectbox(
@@ -1010,12 +1053,13 @@ def render_official_results(data: dict):
     resultados["partido_id"] = resultados["partido_id"].astype(str).str.strip()
 
     merged = partidos.merge(resultados, on="partido_id", how="left", suffixes=("", "_res"))
+    merged = sort_partidos_df(merged)
     fases_presentes = [f for f in FASES_ORDEN if f in merged["fase"].astype(str).unique().tolist()]
     if not fases_presentes:
         fases_presentes = merged["fase"].astype(str).unique().tolist()
 
     fase = st.selectbox("Fase", options=fases_presentes)
-    df_fase = merged[merged["fase"] == fase].copy()
+    df_fase = sort_partidos_df(merged[merged["fase"] == fase].copy())
 
     st.dataframe(
         df_fase[["partido_id", "grupo", "fecha", "hora", "local", "visitante", "marcador_local", "marcador_visitante"]],
@@ -1089,13 +1133,13 @@ def get_user_predictions_view(data: dict, participante: str) -> pd.DataFrame:
         on="partido_id",
         how="left",
     )
-    return df
+    return sort_partidos_df(df)
 
 
 def render_predictions_capture(data: dict):
     st.title("CAPTURA DE PRONÓSTICOS")
 
-    partidos = data["partidos"].copy()
+    partidos = sort_partidos_df(data["partidos"].copy())
     pron = data["pronosticos"].copy()
     participantes = get_participantes_solo_usuarios(data["participantes"])
     user = st.session_state.user_name
@@ -1132,7 +1176,15 @@ def render_predictions_capture(data: dict):
         fases_presentes = partidos["fase"].astype(str).unique().tolist()
 
     fase = st.selectbox("Fase", options=fases_presentes)
-    df_fase = partidos[partidos["fase"] == fase].copy()
+    df_fase = sort_partidos_df(partidos[partidos["fase"] == fase].copy())
+    fase_cerrada = is_phase_closed(partidos, fase)
+    fecha_min_fase = get_phase_min_datetime(partidos, fase)
+
+    if fecha_min_fase is not None:
+        st.caption(
+            f"Fecha mínima de cierre para esta fase: {fecha_min_fase.strftime('%d/%m/%Y %H:%M')} (hora de México)"
+        )
+    st.caption("Fase cerrada" if fase_cerrada else "Fase abierta")
 
     grupos = sorted([g for g in df_fase["grupo"].astype(str).fillna("").unique().tolist() if g != ""])
     if not grupos:
@@ -1140,7 +1192,7 @@ def render_predictions_capture(data: dict):
         df_fase["grupo"] = "Fase completa"
 
     grupo = st.selectbox("Grupo / bloque", options=grupos)
-    df_block = df_fase[df_fase["grupo"] == grupo].copy()
+    df_block = sort_partidos_df(df_fase[df_fase["grupo"] == grupo].copy())
 
     pron_user = pron[pron["participante"].astype(str).str.strip() == user].copy()
     pron_user["partido_id"] = pron_user["partido_id"].astype(str).str.strip()
@@ -1154,32 +1206,24 @@ def render_predictions_capture(data: dict):
         draft_local = normalize_int(st.session_state.draft_pronosticos.get(pid, {}).get("marcador_local"), prev_local) or 0
         draft_visit = normalize_int(st.session_state.draft_pronosticos.get(pid, {}).get("marcador_visitante"), prev_visit) or 0
 
-        match_dt = parse_match_datetime(row)
-        cerrado = match_dt is not None and now_mx() >= match_dt
-
         c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 2, 2])
         with c1:
             st.write(f"**{row['local']}**")
         with c2:
-            val_l = st.number_input(f"pr_l_{pid}", min_value=0, step=1, value=draft_local, disabled=cerrado, label_visibility="collapsed")
+            val_l = st.number_input(f"pr_l_{pid}", min_value=0, step=1, value=draft_local, disabled=fase_cerrada, label_visibility="collapsed")
         with c3:
-            val_v = st.number_input(f"pr_v_{pid}", min_value=0, step=1, value=draft_visit, disabled=cerrado, label_visibility="collapsed")
+            val_v = st.number_input(f"pr_v_{pid}", min_value=0, step=1, value=draft_visit, disabled=fase_cerrada, label_visibility="collapsed")
         with c4:
             st.write(f"**{row['visitante']}**")
         with c5:
             st.caption(f"{row['fecha']} {row['hora']}")
-            st.caption("Cerrado" if cerrado else "Abierto")
+            st.caption("Cerrado" if fase_cerrada else "Abierto")
 
         st.session_state.draft_pronosticos[pid] = {"marcador_local": val_l, "marcador_visitante": val_v}
 
-    if st.button("Guardar pronósticos de este bloque", use_container_width=True):
+    if st.button("Guardar pronósticos de este bloque", use_container_width=True, disabled=fase_cerrada):
         try:
-            abiertos = []
-            for _, row in df_block.iterrows():
-                match_dt = parse_match_datetime(row)
-                if match_dt is None or now_mx() < match_dt:
-                    abiertos.append(row)
-            abiertos_df = pd.DataFrame(abiertos) if abiertos else df_block.iloc[0:0].copy()
+            abiertos_df = df_block.iloc[0:0].copy() if fase_cerrada else df_block.copy()
             save_user_predictions_batch(user, abiertos_df, st.session_state.draft_pronosticos, data["pronosticos"])
             st.success("Pronósticos guardados correctamente.")
             st.rerun()
@@ -1242,79 +1286,141 @@ def render_tabla_general(data: dict):
 def render_bonus(data: dict):
     st.title("BONUS")
 
-    partidos = data["partidos"].copy()
+    partidos = sort_partidos_df(data["partidos"].copy())
     bonus_resp = data["bonus_resp"].copy()
     user = st.session_state.user_name
+    is_admin = st.session_state.is_admin
 
     if partidos.empty:
         st.info("Aún no hay calendario cargado.")
         return
 
     partidos["partido_id"] = partidos["partido_id"].astype(str).str.strip()
-    habilitados = partidos[partidos["bonus_habilitado"].astype(str).apply(to_bool)].copy()
+    bonus_resp["partido_id"] = bonus_resp.get("partido_id", pd.Series(dtype=str)).astype(str).str.strip() if not bonus_resp.empty else pd.Series(dtype=str)
+    bonus_resp["participante"] = bonus_resp.get("participante", pd.Series(dtype=str)).astype(str).str.strip() if not bonus_resp.empty else pd.Series(dtype=str)
 
-    if habilitados.empty:
-        st.info("Aún no hay bonus registrados.")
-        return
+    bonus_activos = get_active_bonus_df(partidos)
+    bonus_pendientes = bonus_activos[~bonus_activos["bonus_resuelto"]].copy() if not bonus_activos.empty else bonus_activos.copy()
 
-    bonus_resp_user = bonus_resp[bonus_resp["participante"].astype(str).str.strip() == user].copy()
-    bonus_resp_user["partido_id"] = bonus_resp_user["partido_id"].astype(str).str.strip()
+    if not bonus_pendientes.empty:
+        st.subheader("Bonus activo")
 
-    for _, row in habilitados.iterrows():
-        pid = normalize_text(row.get("partido_id"))
-        opciones = safe_json_load(row.get("bonus_opciones_json"), [])
-        prev = bonus_resp_user[bonus_resp_user["partido_id"] == pid]
-        prev_val = normalize_text(prev.iloc[0].get("respuesta")) if not prev.empty else ""
+        if not is_admin:
+            bonus_resp_user = bonus_resp[bonus_resp["participante"] == user].copy() if not bonus_resp.empty else pd.DataFrame(columns=["participante", "partido_id", "respuesta", "fecha_guardado_iso"])
 
-        match_dt = parse_match_datetime(row)
-        cerrado = match_dt is not None and now_mx() >= match_dt
-        ya_respondio = bool(prev_val)
-        bloqueado = cerrado or ya_respondio
-
-        st.markdown(f"## {row['local']} vs {row['visitante']}")
-        st.caption(f"{row['fase']} | Grupo {row['grupo']} | {row['fecha']} {row['hora']}")
-        st.write(normalize_text(row.get("bonus_pregunta")))
-
-        if opciones:
-            draft_val = normalize_text(st.session_state.draft_bonus.get(pid))
-            selected_value = prev_val if ya_respondio else draft_val
-            index = opciones.index(selected_value) if selected_value in opciones else 0
-
-            selected = st.radio(
-                f"bonus_{pid}",
-                options=opciones,
-                index=index,
-                disabled=bloqueado,
-            )
-
-            if not ya_respondio and not cerrado:
-                st.session_state.draft_bonus[pid] = selected
-
-        if ya_respondio:
-            st.success(f"Tu respuesta quedó guardada y bloqueada: {prev_val}")
-        elif cerrado:
-            st.caption("Este bonus ya cerró. Ya no admite respuestas.")
-
-        st.divider()
-
-    if st.button("Guardar respuestas bonus", use_container_width=True):
-        try:
-            abiertos = []
-            for _, row in habilitados.iterrows():
-                match_dt = parse_match_datetime(row)
+            for _, row in bonus_pendientes.iterrows():
                 pid = normalize_text(row.get("partido_id"))
+                opciones = safe_json_load(row.get("bonus_opciones_json"), [])
                 prev = bonus_resp_user[bonus_resp_user["partido_id"] == pid]
-                ya_respondio = not prev.empty and normalize_text(prev.iloc[0].get("respuesta")) != ""
+                prev_val = normalize_text(prev.iloc[0].get("respuesta")) if not prev.empty else ""
+                ya_respondio = bool(prev_val)
+                fase = normalize_text(row.get("fase"))
+                fase_cerrada = is_phase_closed(partidos, fase)
+                bloqueado = fase_cerrada or ya_respondio
 
-                if (match_dt is None or now_mx() < match_dt) and not ya_respondio:
-                    abiertos.append(row)
+                st.markdown(f"## {row['local']} vs {row['visitante']}")
+                st.caption(f"{row['fase']} | Grupo {row['grupo']} | {row['fecha']} {row['hora']}")
+                st.write(normalize_text(row.get("bonus_pregunta")))
 
-            abiertos_df = pd.DataFrame(abiertos) if abiertos else habilitados.iloc[0:0].copy()
-            save_bonus_answers_batch(user, abiertos_df, st.session_state.draft_bonus, data["bonus_resp"])
-            st.success("Respuestas bonus guardadas.")
-            st.rerun()
-        except Exception as e:
-            st.error(str(e))
+                if opciones:
+                    draft_val = normalize_text(st.session_state.draft_bonus.get(pid))
+                    selected_value = prev_val if ya_respondio else draft_val
+                    index = opciones.index(selected_value) if selected_value in opciones else 0
+
+                    selected = st.radio(
+                        f"bonus_{pid}",
+                        options=opciones,
+                        index=index,
+                        disabled=bloqueado,
+                    )
+
+                    if not ya_respondio and not fase_cerrada:
+                        st.session_state.draft_bonus[pid] = selected
+
+                if ya_respondio:
+                    st.success(f"Tu respuesta quedó guardada y bloqueada: {prev_val}")
+                elif fase_cerrada:
+                    st.caption("Este bonus ya cerró por fecha mínima de la fase. Ya no admite respuestas.")
+
+                respuestas_bonus = bonus_resp[bonus_resp["partido_id"] == pid].copy() if not bonus_resp.empty else pd.DataFrame()
+                if not respuestas_bonus.empty:
+                    respuestas_bonus = respuestas_bonus.rename(columns={
+                        "participante": "Participante",
+                        "respuesta": "Respuesta",
+                        "fecha_guardado_iso": "Fecha de guardado",
+                    })
+                    st.markdown("### Respuestas registradas")
+                    st.dataframe(
+                        respuestas_bonus[["Participante", "Respuesta", "Fecha de guardado"]],
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                else:
+                    st.info("Aún no hay respuestas registradas para este bonus.")
+
+                st.divider()
+
+            if st.button("Guardar respuestas bonus", use_container_width=True):
+                try:
+                    abiertos = []
+                    for _, row in bonus_pendientes.iterrows():
+                        fase = normalize_text(row.get("fase"))
+                        pid = normalize_text(row.get("partido_id"))
+                        prev = bonus_resp_user[bonus_resp_user["partido_id"] == pid]
+                        ya_respondio = not prev.empty and normalize_text(prev.iloc[0].get("respuesta")) != ""
+
+                        if not is_phase_closed(partidos, fase) and not ya_respondio:
+                            abiertos.append(row)
+
+                    abiertos_df = pd.DataFrame(abiertos) if abiertos else bonus_pendientes.iloc[0:0].copy()
+                    save_bonus_answers_batch(user, abiertos_df, st.session_state.draft_bonus, data["bonus_resp"])
+                    st.success("Respuestas bonus guardadas.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(str(e))
+        else:
+            st.info("El administrador no participa en respuestas bonus.")
+            for _, row in bonus_pendientes.iterrows():
+                pid = normalize_text(row.get("partido_id"))
+                st.markdown(f"## {row['local']} vs {row['visitante']}")
+                st.caption(f"{row['fase']} | Grupo {row['grupo']} | {row['fecha']} {row['hora']}")
+                st.write(normalize_text(row.get("bonus_pregunta")))
+                respuestas_bonus = bonus_resp[bonus_resp["partido_id"] == pid].copy() if not bonus_resp.empty else pd.DataFrame()
+                if not respuestas_bonus.empty:
+                    respuestas_bonus = respuestas_bonus.rename(columns={
+                        "participante": "Participante",
+                        "respuesta": "Respuesta",
+                        "fecha_guardado_iso": "Fecha de guardado",
+                    })
+                    st.markdown("### Respuestas registradas")
+                    st.dataframe(
+                        respuestas_bonus[["Participante", "Respuesta", "Fecha de guardado"]],
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                else:
+                    st.info("Aún no hay respuestas registradas para este bonus.")
+                st.divider()
+    else:
+        st.subheader("NO HAY BONUS ACTIVO")
+        bonus_emitidos = bonus_activos[bonus_activos["bonus_resuelto"]].copy() if not bonus_activos.empty else pd.DataFrame()
+        if bonus_emitidos.empty:
+            st.info("Aún no hay bonus emitidos o resueltos.")
+        else:
+            historico = bonus_emitidos.copy()
+            historico["Partido"] = historico["local"].astype(str) + " vs " + historico["visitante"].astype(str)
+            historico = historico.rename(columns={
+                "fase": "Fase",
+                "grupo": "Grupo",
+                "bonus_pregunta": "Pregunta bonus",
+                "bonus_respuesta_correcta": "Respuesta correcta",
+                "bonus_puntos": "Puntos bonus",
+            })
+            st.dataframe(
+                historico[["Fase", "Grupo", "Partido", "Pregunta bonus", "Respuesta correcta", "Puntos bonus"]],
+                use_container_width=True,
+                hide_index=True,
+            )
 
 
 def main():
