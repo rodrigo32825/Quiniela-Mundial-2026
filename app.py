@@ -172,7 +172,7 @@ def read_sheet(sheet_name: str, expected_columns: list[str]) -> pd.DataFrame:
     if conn is None:
         raise RuntimeError("No se encontró la conexión a Google Sheets.")
     try:
-        df = conn.read(worksheet=sheet_name, ttl=60)
+        df = conn.read(worksheet=sheet_name, ttl=10)
         if df is None:
             return pd.DataFrame(columns=expected_columns)
         df = pd.DataFrame(df)
