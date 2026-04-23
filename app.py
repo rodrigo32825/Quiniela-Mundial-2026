@@ -1182,18 +1182,26 @@ def main():
         render_connection_help()
         return
 
-    data = load_all_data_cached(st.session_state.get("data_nonce", 0))
-    if data["participantes"].empty:
-        try:
-            ensure_admin_exists(data)
-            data = load_all_data_cached(st.session_state.get("data_nonce", 0))
-        except Exception:
-            pass
-
     if not st.session_state.logged_in:
-        login_box(data["participantes"])
+        participantes_df = read_sheet(
+            SHEET_PARTICIPANTES,
+            ["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],
+        )
+
+        if participantes_df.empty:
+            try:
+                ensure_admin_exists({"participantes": participantes_df})
+                participantes_df = read_sheet(
+                    SHEET_PARTICIPANTES,
+                    ["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],
+                )
+            except Exception:
+                pass
+
+        login_box(participantes_df)
         return
 
+    data = load_all_data_cached(st.session_state.get("data_nonce", 0))
     sidebar_nav()
     data = load_all_data_cached(st.session_state.get("data_nonce", 0))
     config_map = get_config_map(data["config"])
