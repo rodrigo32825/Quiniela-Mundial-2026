@@ -449,20 +449,16 @@ def recompute_points(data: dict):
         calc = puntos_partido(p_local, p_visit, o_local, o_visit)
 
 
-
-
-
-
         favorito_pts = 0
         favoritos = favoritos_map.get(participante, [])
         local = normalize_text(row.get("local"))
         visitante = normalize_text(row.get("visitante"))
 
 	ganador = ""
-if o_local > o_visit:
-    ganador = local
-elif o_visit > o_local:
-    ganador = visitante        
+	if o_local > o_visit:
+    	    ganador = local
+	elif o_visit > o_local:
+            ganador = visitante        
 
 
 
