@@ -170,7 +170,7 @@ def render_connection_help():
 def read_sheet(sheet_name: str, expected_columns: list[str]) -> pd.DataFrame:
     conn = get_conn()
     if conn is None:
-        return pd.DataFrame(columns=expected_columns)
+        raise RuntimeError("No se encontró la conexión a Google Sheets.")
     try:
         df = conn.read(worksheet=sheet_name, ttl=10)
         if df is None:
@@ -179,8 +179,8 @@ def read_sheet(sheet_name: str, expected_columns: list[str]) -> pd.DataFrame:
         df.columns = [normalize_text(c) for c in df.columns]
         df = ensure_columns(df, expected_columns)
         return df.fillna("")
-    except Exception:
-        return pd.DataFrame(columns=expected_columns)
+    except Exception as e:
+        raise RuntimeError(f"Error leyendo hoja '{sheet_name}': {e}")
 
 
 def write_sheet(sheet_name: str, df: pd.DataFrame):
@@ -305,10 +305,18 @@ def login_box(participantes_df: pd.DataFrame):
 
 
 def ensure_admin_exists(data: dict):
-    participantes = data["participantes"].copy()
+    participantes = read_sheet(
+        SHEET_PARTICIPANTES,
+        ["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],
+    ).copy()
     if participantes.empty:
         participantes.loc[len(participantes)] = [
-            DEFAULT_ADMIN_USER, DEFAULT_ADMIN_PASS, "[]", "", "", "1"
+            DEFAULT_ADMIN_USER,
+            DEFAULT_ADMIN_PASS,
+            "[]",
+            "",
+            "",
+            "1",
         ]
         write_sheet(SHEET_PARTICIPANTES, participantes)
         clear_data_cache()
@@ -448,7 +456,6 @@ def recompute_points(data: dict):
 
         calc = puntos_partido(p_local, p_visit, o_local, o_visit)
 
-
         favorito_pts = 0
         favoritos = favoritos_map.get(participante, [])
         local = normalize_text(row.get("local"))
@@ -458,9 +465,7 @@ def recompute_points(data: dict):
         if o_local > o_visit:
             ganador = local
         elif o_visit > o_local:
-            ganador = visitante					
-	
-
+            ganador = visitante
 
         favoritos_normalizados = [str(f).strip().lower() for f in favoritos]
         ganador_normalizado = ganador.strip().lower() if ganador else ""
@@ -602,21 +607,31 @@ def save_bonus_answers_batch(participante: str, partidos_bonus: pd.DataFrame, dr
             continue
 
         mask = (bonus_df["participante"] == participante) & (bonus_df["partido_id"] == pid)
-        if mask.any():
-            bonus_df.loc[mask, ["respuesta", "fecha_guardado_iso"]] = [answer, ts]
-        else:
-            bonus_df.loc[len(bonus_df)] = [participante, pid, answer, ts]
 
-    bonus_df = bonus_df.drop_duplicates(subset=["participante", "partido_id"], keep="last")
+        # Si el participante ya respondió este bonus, no permitir modificación.
+        if mask.any():
+            continue
+
+        bonus_df.loc[len(bonus_df)] = [participante, pid, answer, ts]
+
+    bonus_df = bonus_df.drop_duplicates(subset=["participante", "partido_id"], keep="first")
     write_sheet(SHEET_BONUS_RESP, bonus_df)
     clear_data_cache()
 
 
 def save_favoritos(participantes_df: pd.DataFrame, participante: str, favoritos: list[str]):
+    participantes_df = read_sheet(
+        SHEET_PARTICIPANTES,
+        ["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],
+    )
     participantes_df = ensure_columns(
         participantes_df,
         ["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],
     )
+
+    if participantes_df.empty:
+        raise RuntimeError("Protección activada: no se puede sobrescribir una hoja participantes vacía.")
+
     mask = participantes_df["nombre"].astype(str).str.strip().eq(participante)
     if not mask.any():
         raise RuntimeError("Participante no encontrado.")
@@ -629,10 +644,18 @@ def save_favoritos(participantes_df: pd.DataFrame, participante: str, favoritos:
 
 
 def create_user(participantes_df: pd.DataFrame, nombre: str, clave: str):
+    participantes_df = read_sheet(
+        SHEET_PARTICIPANTES,
+        ["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],
+    )
     participantes_df = ensure_columns(
         participantes_df,
         ["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],
     )
+
+    if participantes_df.empty:
+        raise RuntimeError("Protección activada: no se puede sobrescribir una hoja participantes vacía.")
+
     nombre = nombre.strip()
     clave = clave.strip()
     if not nombre or not clave:
@@ -653,7 +676,7 @@ def save_config_visibility(config_df: pd.DataFrame, visible: bool):
     clear_data_cache()
 
 
-def save_bonus_setup(partidos_df: pd.DataFrame, partido_id: str, pregunta: str, opciones: list[str], puntos: int, respuesta_correcta: str):
+def save_bonus_setup(partidos_df: pd.DataFrame, partido_id: str, pregunta: str, opciones: list[str], puntos: int):
     partidos_df = ensure_columns(
         partidos_df,
         [
@@ -670,6 +693,27 @@ def save_bonus_setup(partidos_df: pd.DataFrame, partido_id: str, pregunta: str, 
     partidos_df.loc[mask, "bonus_pregunta"] = pregunta.strip()
     partidos_df.loc[mask, "bonus_opciones_json"] = json.dumps(opciones, ensure_ascii=False)
     partidos_df.loc[mask, "bonus_puntos"] = str(int(puntos))
+    partidos_df.loc[mask, "bonus_respuesta_correcta"] = ""
+    write_sheet(SHEET_PARTIDOS, partidos_df)
+    clear_data_cache()
+
+
+def save_bonus_correct_answer(partidos_df: pd.DataFrame, partido_id: str, respuesta_correcta: str):
+    partidos_df = ensure_columns(
+        partidos_df,
+        [
+            "partido_id", "fase", "grupo", "fecha", "hora", "ciudad", "estadio",
+            "local", "visitante", "deadline_iso", "bonus_habilitado", "bonus_pregunta",
+            "bonus_opciones_json", "bonus_puntos", "bonus_respuesta_correcta", "activo",
+        ],
+    )
+    mask = partidos_df["partido_id"].astype(str).str.strip().eq(str(partido_id).strip())
+    if not mask.any():
+        raise RuntimeError("Bonus activo no encontrado.")
+
+    if not normalize_text(respuesta_correcta):
+        raise RuntimeError("Debes seleccionar la respuesta correcta.")
+
     partidos_df.loc[mask, "bonus_respuesta_correcta"] = respuesta_correcta.strip()
     write_sheet(SHEET_PARTIDOS, partidos_df)
     clear_data_cache()
@@ -706,24 +750,22 @@ def sidebar_nav():
         st.sidebar.success("Sesión de administrador activa")
     st.sidebar.caption("Modo de lectura optimizado para Google Sheets")
 
-if st.sidebar.button("Cerrar sesión", use_container_width=True):
-    keys_to_clear = [
-        "logged_in",
-        "user_name",
-        "is_admin",
-        "nav",
-        "nav_radio",
-        "draft_resultados",
-        "draft_pronosticos",
-        "draft_bonus",
-        "data_nonce"
-    ]
-
-    for k in keys_to_clear:
-        if k in st.session_state:
-            del st.session_state[k]
-
-    st.rerun()
+    if st.sidebar.button("Cerrar sesión", use_container_width=True):
+        keys_to_clear = [
+            "logged_in",
+            "user_name",
+            "is_admin",
+            "nav",
+            "nav_radio",
+            "draft_resultados",
+            "draft_pronosticos",
+            "draft_bonus",
+            "data_nonce",
+        ]
+        for k in keys_to_clear:
+            if k in st.session_state:
+                del st.session_state[k]
+        st.rerun()
 
 
 def render_inicio(config_map: dict):
@@ -821,6 +863,8 @@ def render_admin(data: dict):
     with tab4:
         st.subheader("Configurar bonus por partido")
         partidos = data["partidos"].copy()
+        bonus_resp = data["bonus_resp"].copy()
+
         if partidos.empty:
             st.info("Primero carga el calendario.")
             return
@@ -829,7 +873,9 @@ def render_admin(data: dict):
             lambda x: f"{x['partido_id']} | {x['local']} vs {x['visitante']} | {x['fase']} | {x['fecha']} {x['hora']}",
             axis=1,
         )
-        selected_label = st.selectbox("Selecciona un partido", partidos["label"].tolist())
+
+        st.markdown("### Bloque 1: Configurar bonus")
+        selected_label = st.selectbox("Selecciona un partido para activar bonus", partidos["label"].tolist())
         row = partidos[partidos["label"] == selected_label].iloc[0]
         partido_id = normalize_text(row.get("partido_id"))
 
@@ -841,17 +887,84 @@ def render_admin(data: dict):
         o4 = st.text_input("Opción 4")
         o5 = st.text_input("Opción 5")
         opciones = [x.strip() for x in [o1, o2, o3, o4, o5] if x.strip()]
-        correcta = st.selectbox("Respuesta correcta", options=opciones if opciones else [""])
 
-        if st.button("Guardar bonus del partido", use_container_width=True):
+        if st.button("Guardar configuración bonus", use_container_width=True):
             try:
                 if not pregunta.strip() or len(opciones) < 2:
                     raise RuntimeError("Captura la pregunta y al menos dos opciones.")
-                save_bonus_setup(data["partidos"], partido_id, pregunta, opciones, int(puntos), correcta)
+                save_bonus_setup(data["partidos"], partido_id, pregunta, opciones, int(puntos))
                 st.success("Bonus guardado correctamente.")
                 st.rerun()
             except Exception as e:
                 st.error(str(e))
+
+        st.divider()
+        st.markdown("### Bloque 2: Resolver bonus activo")
+
+        bonus_activos = partidos[
+            partidos["bonus_habilitado"].astype(str).apply(to_bool)
+            & partidos["bonus_pregunta"].astype(str).str.strip().ne("")
+        ].copy()
+
+        if bonus_activos.empty:
+            st.info("Aún no hay bonuses activos configurados.")
+        else:
+            bonus_activos["resuelto"] = bonus_activos["bonus_respuesta_correcta"].astype(str).str.strip().ne("")
+            mostrar_resueltos = st.checkbox("Mostrar también bonuses ya resueltos", value=False)
+
+            if not mostrar_resueltos:
+                bonus_activos = bonus_activos[~bonus_activos["resuelto"]].copy()
+
+            if bonus_activos.empty:
+                st.info("No hay bonuses activos pendientes por resolver.")
+            else:
+                bonus_activos["label_bonus"] = bonus_activos.apply(
+                    lambda x: (
+                        f"{x['partido_id']} | {x['local']} vs {x['visitante']} | "
+                        f"{x['fase']} | {normalize_text(x.get('bonus_pregunta'))}"
+                    ),
+                    axis=1,
+                )
+
+                selected_bonus = st.selectbox(
+                    "Selecciona un bonus activo",
+                    options=bonus_activos["label_bonus"].tolist(),
+                    key="resolver_bonus_select",
+                )
+
+                bonus_row = bonus_activos[bonus_activos["label_bonus"] == selected_bonus].iloc[0]
+                bonus_pid = normalize_text(bonus_row.get("partido_id"))
+                bonus_opciones = safe_json_load(bonus_row.get("bonus_opciones_json"), [])
+
+                respuestas_count = 0
+                if not bonus_resp.empty:
+                    respuestas_count = len(
+                        bonus_resp[bonus_resp["partido_id"].astype(str).str.strip() == bonus_pid]
+                    )
+
+                st.caption(f"Partido: {bonus_row['local']} vs {bonus_row['visitante']}")
+                st.caption(f"Fase: {bonus_row['fase']} | Grupo: {bonus_row['grupo']}")
+                st.write(f"**Pregunta:** {normalize_text(bonus_row.get('bonus_pregunta'))}")
+                st.write(f"**Opciones:** {', '.join(bonus_opciones) if bonus_opciones else 'Sin opciones'}")
+                st.write(f"**Puntos bonus:** {normalize_text(bonus_row.get('bonus_puntos'))}")
+                st.write(f"**Respuestas registradas:** {respuestas_count}")
+                estado_bonus = "Resuelto" if normalize_text(bonus_row.get("bonus_respuesta_correcta")) else "Pendiente de resolver"
+                st.write(f"**Estatus:** {estado_bonus}")
+
+                respuesta_correcta = st.selectbox(
+                    "Respuesta correcta",
+                    options=bonus_opciones if bonus_opciones else [""],
+                    key=f"correcta_{bonus_pid}",
+                )
+
+                if st.button("Guardar respuesta correcta y recalcular bonus", use_container_width=True):
+                    try:
+                        save_bonus_correct_answer(data["partidos"], bonus_pid, respuesta_correcta)
+                        recalculate_and_save_all_points(load_all_data_cached(st.session_state.get("data_nonce", 0)))
+                        st.success("Bonus resuelto y puntos recalculados.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(str(e))
 
 
 def render_official_results(data: dict):
@@ -1126,15 +1239,32 @@ def render_bonus(data: dict):
 
         match_dt = parse_match_datetime(row)
         cerrado = match_dt is not None and now_mx() >= match_dt
+        ya_respondio = bool(prev_val)
+        bloqueado = cerrado or ya_respondio
 
         st.markdown(f"## {row['local']} vs {row['visitante']}")
         st.caption(f"{row['fase']} | Grupo {row['grupo']} | {row['fecha']} {row['hora']}")
         st.write(normalize_text(row.get("bonus_pregunta")))
 
         if opciones:
-            index = opciones.index(prev_val) if prev_val in opciones else 0
-            selected = st.radio(f"bonus_{pid}", options=opciones, index=index, disabled=cerrado)
-            st.session_state.draft_bonus[pid] = selected
+            draft_val = normalize_text(st.session_state.draft_bonus.get(pid))
+            selected_value = prev_val if ya_respondio else draft_val
+            index = opciones.index(selected_value) if selected_value in opciones else 0
+
+            selected = st.radio(
+                f"bonus_{pid}",
+                options=opciones,
+                index=index,
+                disabled=bloqueado,
+            )
+
+            if not ya_respondio and not cerrado:
+                st.session_state.draft_bonus[pid] = selected
+
+        if ya_respondio:
+            st.success(f"Tu respuesta quedó guardada y bloqueada: {prev_val}")
+        elif cerrado:
+            st.caption("Este bonus ya cerró. Ya no admite respuestas.")
 
         st.divider()
 
@@ -1143,11 +1273,15 @@ def render_bonus(data: dict):
             abiertos = []
             for _, row in habilitados.iterrows():
                 match_dt = parse_match_datetime(row)
-                if match_dt is None or now_mx() < match_dt:
+                pid = normalize_text(row.get("partido_id"))
+                prev = bonus_resp_user[bonus_resp_user["partido_id"] == pid]
+                ya_respondio = not prev.empty and normalize_text(prev.iloc[0].get("respuesta")) != ""
+
+                if (match_dt is None or now_mx() < match_dt) and not ya_respondio:
                     abiertos.append(row)
+
             abiertos_df = pd.DataFrame(abiertos) if abiertos else habilitados.iloc[0:0].copy()
             save_bonus_answers_batch(user, abiertos_df, st.session_state.draft_bonus, data["bonus_resp"])
-            recalculate_and_save_all_points(load_all_data_cached(st.session_state.get("data_nonce", 0)))
             st.success("Respuestas bonus guardadas.")
             st.rerun()
         except Exception as e:
@@ -1162,51 +1296,20 @@ def main():
         render_connection_help()
         return
 
-    if not st.session_state.logged_in:
+    data = load_all_data_cached(st.session_state.get("data_nonce", 0))
+    if data["participantes"].empty:
         try:
-            participantes_df = read_sheet(
-                SHEET_PARTICIPANTES,
-                ["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],
-                strict=True,
-            )
-        except Exception as e:
-            st.title("Quiniela Mundial 2026")
-            st.error(str(e))
-            return
+            ensure_admin_exists(data)
+            data = load_all_data_cached(st.session_state.get("data_nonce", 0))
+        except Exception:
+            pass
 
-        if participantes_df.empty:
-            try:
-                ensure_admin_exists({"participantes": participantes_df})
-                participantes_df = read_sheet(
-                    SHEET_PARTICIPANTES,
-                    ["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],
-                    strict=True,
-                )
-            except Exception:
-                pass
-
-        login_box(participantes_df)
+    if not st.session_state.logged_in:
+        login_box(data["participantes"])
         return
 
-    try:
-        data = load_all_data_cached(st.session_state.get("data_nonce", 0))
-    except Exception:
-        st.session_state.logged_in = False
-        st.session_state.user_name = ""
-        st.session_state.is_admin = False
-        st.session_state.nav = "INICIO"
-        if "nav_radio" in st.session_state:
-            del st.session_state["nav_radio"]
-        st.rerun()
-
     sidebar_nav()
-
-    try:
-        data = load_all_data_cached(st.session_state.get("data_nonce", 0))
-    except Exception:
-        st.error("Error temporal recargando datos desde Google Sheets.")
-        st.stop()
-
+    data = load_all_data_cached(st.session_state.get("data_nonce", 0))
     config_map = get_config_map(data["config"])
 
     if st.session_state.nav == "INICIO":
