@@ -170,7 +170,7 @@ def render_connection_help():
 def read_sheet(sheet_name: str, expected_columns: list[str]) -> pd.DataFrame:
     conn = get_conn()
     if conn is None:
-        return pd.DataFrame(columns=expected_columns)
+        raise RuntimeError("No se encontró la conexión a Google Sheets.")
     try:
         df = conn.read(worksheet=sheet_name, ttl=10)
         if df is None:
@@ -179,8 +179,8 @@ def read_sheet(sheet_name: str, expected_columns: list[str]) -> pd.DataFrame:
         df.columns = [normalize_text(c) for c in df.columns]
         df = ensure_columns(df, expected_columns)
         return df.fillna("")
-    except Exception:
-        return pd.DataFrame(columns=expected_columns)
+    except Exception as e:
+        raise RuntimeError(f"Error leyendo hoja '{sheet_name}': {e}")
 
 
 def write_sheet(sheet_name: str, df: pd.DataFrame):
@@ -305,10 +305,18 @@ def login_box(participantes_df: pd.DataFrame):
 
 
 def ensure_admin_exists(data: dict):
-    participantes = data["participantes"].copy()
+    participantes = read_sheet(
+        SHEET_PARTICIPANTES,
+        ["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],
+    ).copy()
     if participantes.empty:
         participantes.loc[len(participantes)] = [
-            DEFAULT_ADMIN_USER, DEFAULT_ADMIN_PASS, "[]", "", "", "1"
+            DEFAULT_ADMIN_USER,
+            DEFAULT_ADMIN_PASS,
+            "[]",
+            "",
+            "",
+            "1",
         ]
         write_sheet(SHEET_PARTICIPANTES, participantes)
         clear_data_cache()
@@ -448,7 +456,6 @@ def recompute_points(data: dict):
 
         calc = puntos_partido(p_local, p_visit, o_local, o_visit)
 
-
         favorito_pts = 0
         favoritos = favoritos_map.get(participante, [])
         local = normalize_text(row.get("local"))
@@ -458,9 +465,7 @@ def recompute_points(data: dict):
         if o_local > o_visit:
             ganador = local
         elif o_visit > o_local:
-            ganador = visitante					
-	
-
+            ganador = visitante
 
         favoritos_normalizados = [str(f).strip().lower() for f in favoritos]
         ganador_normalizado = ganador.strip().lower() if ganador else ""
@@ -613,10 +618,18 @@ def save_bonus_answers_batch(participante: str, partidos_bonus: pd.DataFrame, dr
 
 
 def save_favoritos(participantes_df: pd.DataFrame, participante: str, favoritos: list[str]):
+    participantes_df = read_sheet(
+        SHEET_PARTICIPANTES,
+        ["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],
+    )
     participantes_df = ensure_columns(
         participantes_df,
         ["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],
     )
+
+    if participantes_df.empty:
+        raise RuntimeError("Protección activada: no se puede sobrescribir una hoja participantes vacía.")
+
     mask = participantes_df["nombre"].astype(str).str.strip().eq(participante)
     if not mask.any():
         raise RuntimeError("Participante no encontrado.")
@@ -629,10 +642,18 @@ def save_favoritos(participantes_df: pd.DataFrame, participante: str, favoritos:
 
 
 def create_user(participantes_df: pd.DataFrame, nombre: str, clave: str):
+    participantes_df = read_sheet(
+        SHEET_PARTICIPANTES,
+        ["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],
+    )
     participantes_df = ensure_columns(
         participantes_df,
         ["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],
     )
+
+    if participantes_df.empty:
+        raise RuntimeError("Protección activada: no se puede sobrescribir una hoja participantes vacía.")
+
     nombre = nombre.strip()
     clave = clave.strip()
     if not nombre or not clave:
@@ -706,24 +727,22 @@ def sidebar_nav():
         st.sidebar.success("Sesión de administrador activa")
     st.sidebar.caption("Modo de lectura optimizado para Google Sheets")
 
-if st.sidebar.button("Cerrar sesión", use_container_width=True):
-    keys_to_clear = [
-        "logged_in",
-        "user_name",
-        "is_admin",
-        "nav",
-        "nav_radio",
-        "draft_resultados",
-        "draft_pronosticos",
-        "draft_bonus",
-        "data_nonce"
-    ]
-
-    for k in keys_to_clear:
-        if k in st.session_state:
-            del st.session_state[k]
-
-    st.rerun()
+    if st.sidebar.button("Cerrar sesión", use_container_width=True):
+        keys_to_clear = [
+            "logged_in",
+            "user_name",
+            "is_admin",
+            "nav",
+            "nav_radio",
+            "draft_resultados",
+            "draft_pronosticos",
+            "draft_bonus",
+            "data_nonce",
+        ]
+        for k in keys_to_clear:
+            if k in st.session_state:
+                del st.session_state[k]
+        st.rerun()
 
 
 def render_inicio(config_map: dict):
