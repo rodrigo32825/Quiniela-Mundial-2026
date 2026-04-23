@@ -1,4 +1,5 @@
 import json
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -167,35 +168,58 @@ def render_connection_help():
     st.caption("En tu caso actual puedes seguir usando la URL del archivo QUINIELA 2026 DB en secrets.")
 
 
-def read_sheet(sheet_name: str, expected_columns: list[str]) -> pd.DataFrame:
+def read_sheet(sheet_name: str, expected_columns: list[str], required: bool = True, retries: int = 3) -> pd.DataFrame:
+    conn = get_conn()
+    if conn is None:
+        if required:
+            raise RuntimeError("No se encontró la conexión a Google Sheets.")
+        return pd.DataFrame(columns=expected_columns)
+
+    last_error = None
+    for attempt in range(retries):
+        try:
+            df = conn.read(worksheet=sheet_name, ttl=10)
+            if df is None:
+                return pd.DataFrame(columns=expected_columns)
+            df = pd.DataFrame(df)
+            df.columns = [normalize_text(c) for c in df.columns]
+            df = ensure_columns(df, expected_columns)
+            return df.fillna("")
+        except Exception as e:
+            last_error = e
+            if attempt < retries - 1:
+                time.sleep(0.6 * (attempt + 1))
+
+    if required:
+        raise RuntimeError(f"Error leyendo hoja '{sheet_name}': {last_error}")
+    return pd.DataFrame(columns=expected_columns)
+
+
+def write_sheet(sheet_name: str, df: pd.DataFrame, retries: int = 3):
     conn = get_conn()
     if conn is None:
         raise RuntimeError("No se encontró la conexión a Google Sheets.")
-    try:
-        df = conn.read(worksheet=sheet_name, ttl=10)
-        if df is None:
-            return pd.DataFrame(columns=expected_columns)
-        df = pd.DataFrame(df)
-        df.columns = [normalize_text(c) for c in df.columns]
-        df = ensure_columns(df, expected_columns)
-        return df.fillna("")
-    except Exception as e:
-        raise RuntimeError(f"Error leyendo hoja '{sheet_name}': {e}")
 
+    last_error = None
+    for attempt in range(retries):
+        try:
+            conn.update(worksheet=sheet_name, data=serialize_df(df))
+            return
+        except Exception as e:
+            last_error = e
+            if attempt < retries - 1:
+                time.sleep(0.6 * (attempt + 1))
 
-def write_sheet(sheet_name: str, df: pd.DataFrame):
-    conn = get_conn()
-    if conn is None:
-        raise RuntimeError("No se encontró la conexión a Google Sheets.")
-    conn.update(worksheet=sheet_name, data=serialize_df(df))
+    raise RuntimeError(f"Error escribiendo hoja '{sheet_name}': {last_error}")
 
 
 def load_all_data():
     return {
-        "config": read_sheet(SHEET_CONFIG, ["clave", "valor"]),
+        "config": read_sheet(SHEET_CONFIG, ["clave", "valor"], required=True),
         "participantes": read_sheet(
             SHEET_PARTICIPANTES,
             ["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],
+            required=True,
         ),
         "partidos": read_sheet(
             SHEET_PARTIDOS,
@@ -204,14 +228,17 @@ def load_all_data():
                 "local", "visitante", "deadline_iso", "bonus_habilitado", "bonus_pregunta",
                 "bonus_opciones_json", "bonus_puntos", "bonus_respuesta_correcta", "activo",
             ],
+            required=True,
         ),
         "pronosticos": read_sheet(
             SHEET_PRONOSTICOS,
             ["participante", "partido_id", "marcador_local", "marcador_visitante", "fecha_guardado_iso"],
+            required=False,
         ),
         "resultados": read_sheet(
             SHEET_RESULTADOS,
             ["partido_id", "marcador_local", "marcador_visitante", "fecha_guardado_iso"],
+            required=False,
         ),
         "puntos": read_sheet(
             SHEET_PUNTOS,
@@ -219,14 +246,17 @@ def load_all_data():
                 "participante", "partido_id", "fase", "acierto_resultado", "exacto",
                 "puntos_base", "puntos_favorito", "total_partido", "fecha_calculo_iso",
             ],
+            required=False,
         ),
         "bonus_resp": read_sheet(
             SHEET_BONUS_RESP,
             ["participante", "partido_id", "respuesta", "fecha_guardado_iso"],
+            required=False,
         ),
         "bonus_puntos": read_sheet(
             SHEET_BONUS_PUNTOS,
             ["participante", "partido_id", "puntos_bonus", "fecha_calculo_iso"],
+            required=False,
         ),
     }
 
@@ -861,7 +891,7 @@ def render_admin(data: dict):
             st.rerun()
 
     with tab4:
-        st.subheader("Configurar bonus por partido")
+        st.subheader("Administración de bonus")
         partidos = data["partidos"].copy()
         bonus_resp = data["bonus_resp"].copy()
 
@@ -1151,7 +1181,6 @@ def render_predictions_capture(data: dict):
                     abiertos.append(row)
             abiertos_df = pd.DataFrame(abiertos) if abiertos else df_block.iloc[0:0].copy()
             save_user_predictions_batch(user, abiertos_df, st.session_state.draft_pronosticos, data["pronosticos"])
-            recalculate_and_save_all_points(load_all_data_cached(st.session_state.get("data_nonce", 0)))
             st.success("Pronósticos guardados correctamente.")
             st.rerun()
         except Exception as e:
@@ -1296,7 +1325,14 @@ def main():
         render_connection_help()
         return
 
-    data = load_all_data_cached(st.session_state.get("data_nonce", 0))
+    try:
+        data = load_all_data_cached(st.session_state.get("data_nonce", 0))
+    except Exception as e:
+        st.title("Quiniela Mundial 2026")
+        st.error(str(e))
+        st.caption("La app no pudo leer una o más hojas críticas de Google Sheets. No es un tema de cookies del navegador.")
+        return
+
     if data["participantes"].empty:
         try:
             ensure_admin_exists(data)
@@ -1309,7 +1345,6 @@ def main():
         return
 
     sidebar_nav()
-    data = load_all_data_cached(st.session_state.get("data_nonce", 0))
     config_map = get_config_map(data["config"])
 
     if st.session_state.nav == "INICIO":
