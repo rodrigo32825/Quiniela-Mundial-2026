@@ -697,7 +697,7 @@ def sidebar_nav():
         st.sidebar.success("Sesión de administrador activa")
     st.sidebar.caption("Modo de lectura optimizado para Google Sheets")
 
-    if st.sidebar.button("Cerrar sesión", use_container_width=True):
+if st.sidebar.button("Cerrar sesión", use_container_width=True):
     keys_to_clear = [
         "logged_in",
         "user_name",
