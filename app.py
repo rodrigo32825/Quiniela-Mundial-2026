@@ -461,9 +461,8 @@ def recompute_points(data: dict):
 
         if ganador and ganador in favoritos:
             fase_normalizada = fase.strip().lower()
-bonus_map = {k.lower(): v for k, v in BONUS_FAVORITOS.items()}
-
-favorito_pts = bonus_map.get(fase_normalizada, 0)
+            bonus_map = {k.lower(): v for k, v in BONUS_FAVORITOS.items()}
+            favorito_pts = bonus_map.get(fase_normalizada, 0)
 
         total = calc["puntos_base"] + favorito_pts
 
