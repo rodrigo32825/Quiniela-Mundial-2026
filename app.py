@@ -454,10 +454,10 @@ def recompute_points(data: dict):
         local = normalize_text(row.get("local"))
         visitante = normalize_text(row.get("visitante"))
 
-	ganador = ""
-	if o_local > o_visit:
+		ganador = ""
+		if o_local > o_visit:
     	    ganador = local
-	elif o_visit > o_local:
+		elif o_visit > o_local:
             ganador = visitante        
 
 
