@@ -254,7 +254,7 @@ def read_sheet(sheet_name: str, expected_columns: list[str], required: bool = Tr
     last_error = None
     for attempt in range(retries):
         try:
-            df = conn.read(worksheet=sheet_name, ttl=60)
+            df = conn.read(worksheet=sheet_name, ttl=5)
             if df is None:
                 return pd.DataFrame(columns=expected_columns)
             df = pd.DataFrame(df)
