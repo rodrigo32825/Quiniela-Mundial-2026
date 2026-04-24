@@ -58,7 +58,7 @@ st.markdown(
 
     /* Sidebar verde sólido */
     section[data-testid="stSidebar"] {
-    background: linear-gradient(135deg, #ffffff 0%, #b30000 100%);
+    background: linear-gradient(135deg, #ffffff 0%, #ffffff 40%, #b30000 100%);
 }
     }
 
