@@ -45,6 +45,17 @@ DEFAULT_ADMIN_PASS = "admin123"
 st.set_page_config(page_title="Quiniela Mundial 2026", layout="wide")
 
 
+st.markdown(
+    """
+    <style>
+    .stApp {
+        background: linear-gradient(135deg, #0b3d2e 0%, #000000 100%);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 def now_mx() -> datetime:
     return datetime.now(MEXICO_TZ)
 
