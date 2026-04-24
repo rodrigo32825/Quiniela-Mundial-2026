@@ -879,7 +879,7 @@ def sidebar_nav():
 def render_inicio(config_map: dict):
     st.title("INICIO")
     st.subheader("Cómo funciona la quiniela")
-    st.write("Cada participante captura sus pronósticos por bloque y los guarda manualmente. Así evitamos recargas innecesarias y reducimos conflictos multiusuario.")
+    st.write("Cada participante captura sus pronósticos por fase.")
 
     st.markdown("### Puntos base")
     st.write("Aciertas ganador o empate: **1 punto**")
