@@ -69,7 +69,7 @@ st.markdown(
 
     /* Texto blanco en sidebar */
     section[data-testid="stSidebar"] * {
-        color: white;
+        color: #b8962e;
     }
 
     </style>
