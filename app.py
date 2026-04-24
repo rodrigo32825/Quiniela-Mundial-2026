@@ -45,12 +45,32 @@ DEFAULT_ADMIN_PASS = "admin123"
 st.set_page_config(page_title="Quiniela Mundial 2026", layout="wide")
 
 
+st.set_page_config(page_title="Quiniela Mundial 2026", layout="wide")
+
 st.markdown(
     """
     <style>
+    
+    /* Fondo general (degradado diagonal) */
     .stApp {
         background: linear-gradient(135deg, #0b3d2e 0%, #000000 100%);
     }
+
+    /* Sidebar verde sólido */
+    section[data-testid="stSidebar"] {
+        background: #0b3d2e;
+    }
+
+    /* Quitar fondo interno gris del sidebar */
+    section[data-testid="stSidebar"] > div {
+        background: transparent;
+    }
+
+    /* Texto blanco en sidebar */
+    section[data-testid="stSidebar"] * {
+        color: white;
+    }
+
     </style>
     """,
     unsafe_allow_html=True
