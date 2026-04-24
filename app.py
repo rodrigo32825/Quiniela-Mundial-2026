@@ -769,7 +769,7 @@ def save_bonus_setup(partidos_df: pd.DataFrame, partido_id: str, pregunta: str, 
     partidos_df.loc[mask, "bonus_puntos"] = str(int(puntos))
     partidos_df.loc[mask, "bonus_respuesta_correcta"] = ""
     write_sheet(SHEET_PARTIDOS, partidos_df)
-    clear_data_cache()
+    st.success("Bonus guardado correctamente. Si no lo ves de inmediato, cambia de módulo y vuelve a entrar.")
 
 
 def save_bonus_correct_answer(partidos_df: pd.DataFrame, partido_id: str, respuesta_correcta: str):
