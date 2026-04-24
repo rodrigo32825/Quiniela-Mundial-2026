@@ -53,7 +53,7 @@ st.markdown(
     
     /* Fondo general (degradado diagonal) */
     .stApp {
-        background: linear-gradient(135deg, #0b3d2e 0%, #000000 100%);
+        background: linear-gradient(135deg, #0b3d2e 0%, #000000 70%);
     }
 
     /* Sidebar verde sólido */
