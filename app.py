@@ -801,7 +801,7 @@ def recalculate_and_save_all_points(data: dict):
 
 
 def sidebar_nav():
-    st.sidebar.image("Logo mundial numerico.png", use_container_width=True)
+    st.sidebar.image("Logo mundial numerico.png", width=180)
     st.sidebar.markdown("---")
     st.sidebar.title("Menú")
     options = ["INICIO", "RESULTADOS OFICIALES FIFA", "TABLA GENERAL DE PARTICIPANTES", "BONUS"]
