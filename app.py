@@ -671,7 +671,8 @@ def save_admin_results_batch(partidos_block: pd.DataFrame, draft: dict, resultad
 
     resultados_df = resultados_df.drop_duplicates(subset=["partido_id"], keep="last")
     write_sheet(SHEET_RESULTADOS, resultados_df)
-    clear_data_cache()
+    return resultados_df
+
 
 
 def save_user_predictions_batch(participante: str, partidos_block: pd.DataFrame, draft: dict, pronosticos_df: pd.DataFrame):
@@ -1163,10 +1164,23 @@ def render_official_results(data: dict):
 
     if st.button("Guardar resultados oficiales de este bloque", use_container_width=True):
         try:
-            save_admin_results_batch(df_block, st.session_state.draft_resultados, data["resultados"])
-            recalculate_and_save_all_points(load_all_data_cached(st.session_state.get("data_nonce", 0)))
-            st.success("Resultados oficiales guardados.")
-            st.rerun()
+
+
+            resultados_actualizados = save_admin_results_batch(
+                df_block,
+                st.session_state.draft_resultados,
+                data["resultados"],
+        )
+
+        data_recalc = data.copy()
+        data_recalc["resultados"] = resultados_actualizados
+
+        recalculate_and_save_all_points(data_recalc)
+
+        st.success("Resultados oficiales guardados.")
+        st.rerun()
+
+     
         except Exception as e:
             st.error(str(e))
 
