@@ -1166,23 +1166,23 @@ def render_official_results(data: dict):
         try:
 
 
-        resultados_actualizados = save_admin_results_batch(
+            resultados_actualizados = save_admin_results_batch(
             df_block,
             st.session_state.draft_resultados,
             data["resultados"],
         )
 
-        data_recalc = data.copy()
-        data_recalc["resultados"] = resultados_actualizados
+            data_recalc = data.copy()
+            data_recalc["resultados"] = resultados_actualizados
         
-        recalculate_and_save_all_points(data_recalc)
+            recalculate_and_save_all_points(data_recalc)
 
-        st.success("Resultados oficiales guardados.")
-        st.rerun()
+            st.success("Resultados oficiales guardados.")
+            st.rerun()
 
      
          except Exception as e:
-            st.error(str(e))
+              st.error(str(e))
 
 
 def get_user_predictions_view(data: dict, participante: str) -> pd.DataFrame:
