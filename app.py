@@ -1172,16 +1172,16 @@ def render_official_results(data: dict):
                 data["resultados"],
         )
 
-        data_recalc = data.copy()
-        data_recalc["resultados"] = resultados_actualizados
+            data_recalc = data.copy()
+            data_recalc["resultados"] = resultados_actualizados
 
-        recalculate_and_save_all_points(data_recalc)
+            recalculate_and_save_all_points(data_recalc)
 
-        st.success("Resultados oficiales guardados.")
-        st.rerun()
+            st.success("Resultados oficiales guardados.")
+            st.rerun()
 
      
-        except Exception as e:
+            except Exception as e:
             st.error(str(e))
 
 
