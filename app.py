@@ -837,7 +837,7 @@ def recalculate_and_save_all_points(data: dict):
     puntos_df, bonus_df = recompute_points(data)
     write_sheet(SHEET_PUNTOS, puntos_df)
     write_sheet(SHEET_BONUS_PUNTOS, bonus_df)
-    clear_data_cache()
+
 
 
 def sidebar_nav():
