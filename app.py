@@ -244,7 +244,7 @@ def render_connection_help():
     st.caption("En tu caso actual puedes seguir usando la URL del archivo QUINIELA 2026 DB en secrets.")
 
 
-def read_sheet(sheet_name: str, expected_columns: list[str], required: bool = True, retries: int = 3) -> pd.DataFrame:
+def read_sheet(sheet_name: str, expected_columns: list[str], required: bool = True, retries: int = 1) -> pd.DataFrame:
     conn = get_conn()
     if conn is None:
         if required:
