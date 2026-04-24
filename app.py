@@ -58,7 +58,8 @@ st.markdown(
 
     /* Sidebar verde sólido */
     section[data-testid="stSidebar"] {
-        background: #0b3d2e;
+    background: linear-gradient(135deg, #ffffff 0%, #b30000 100%);
+}
     }
 
     /* Quitar fondo interno gris del sidebar */
