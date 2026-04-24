@@ -1,4 +1,4 @@
-import json
+    import json
 import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -649,10 +649,17 @@ def save_admin_results_batch(partidos_block: pd.DataFrame, draft: dict, resultad
         pid = normalize_text(row.get("partido_id"))
         if pid not in draft:
             continue
+
+# Solo guardar partidos marcados explícitamente por el admin
+        if not draft[pid].get("guardar"):
+            continue
+
         local = draft[pid].get("marcador_local")
         visitante = draft[pid].get("marcador_visitante")
+
         if local in [None, ""] or visitante in [None, ""]:
             continue
+
 
         mask = resultados_df["partido_id"] == pid
         if mask.any():
@@ -1119,18 +1126,40 @@ def render_official_results(data: dict):
         prev_visit = normalize_int(row.get("marcador_visitante"), 0) or 0
         draft_local = normalize_int(st.session_state.draft_resultados.get(pid, {}).get("marcador_local"), prev_local) or 0
         draft_visit = normalize_int(st.session_state.draft_resultados.get(pid, {}).get("marcador_visitante"), prev_visit) or 0
-
-        c1, c2, c3, c4 = st.columns([2, 1, 1, 2])
+     
+        c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 2, 2])
         with c1:
             st.write(f"**{row['local']}**")
         with c2:
-            val_l = st.number_input(f"res_l_{pid}", min_value=0, step=1, value=draft_local, label_visibility="collapsed")
+            val_l = st.number_input(
+                f"res_l_{pid}",
+                min_value=0,
+                step=1,
+                value=draft_local,
+                label_visibility="collapsed",
+            )
         with c3:
-            val_v = st.number_input(f"res_v_{pid}", min_value=0, step=1, value=draft_visit, label_visibility="collapsed")
+            val_v = st.number_input(
+            f"res_v_{pid}",
+            min_value=0,
+            step=1,
+            value=draft_visit,
+            label_visibility="collapsed",
+            )
         with c4:
             st.write(f"**{row['visitante']}**")
+        with c5:
+            guardar_este = st.checkbox(
+                "Guardar este resultado",
+                key=f"guardar_res_{pid}",
+            )
 
-        st.session_state.draft_resultados[pid] = {"marcador_local": val_l, "marcador_visitante": val_v}
+        st.session_state.draft_resultados[pid] = {
+            "marcador_local": val_l,
+            "marcador_visitante": val_v,
+            "guardar": guardar_este,
+        }
+
 
     if st.button("Guardar resultados oficiales de este bloque", use_container_width=True):
         try:
