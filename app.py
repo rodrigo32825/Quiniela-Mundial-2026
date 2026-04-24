@@ -337,14 +337,15 @@ def load_all_data():
     }
 
 
-@st.cache_data(ttl=15, show_spinner=False)
+@st.cache_data(ttl=180, show_spinner=False)
 def load_all_data_cached(cache_nonce: int = 0):
     return load_all_data()
 
 
 def clear_data_cache():
-    load_all_data_cached.clear()
-    st.session_state.data_nonce = st.session_state.get("data_nonce", 0) + 1
+    # Desactivado para evitar exceso de lecturas a Google Sheets.
+    # Los datos se actualizarán por TTL o con botón manual.
+    pass
 
 
 def get_config_map(config_df: pd.DataFrame) -> dict:
@@ -866,6 +867,13 @@ def sidebar_nav():
         st.sidebar.success("Sesión de administrador activa")
     st.sidebar.caption("Modo de lectura optimizado para Google Sheets")
 
+
+    if st.sidebar.button("Actualizar datos desde Sheets", use_container_width=True):
+        load_all_data_cached.clear()
+        st.session_state.data_nonce = st.session_state.get("data_nonce", 0) + 1
+        st.rerun()
+    
+
     if st.sidebar.button("Cerrar sesión", use_container_width=True):
         keys_to_clear = [
             "logged_in",
@@ -1178,7 +1186,7 @@ def render_official_results(data: dict):
             recalculate_and_save_all_points(data_recalc)
 
             st.success("Resultados oficiales guardados.")
-            st.rerun()
+            
 
      
         except Exception as e:
