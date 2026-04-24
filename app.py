@@ -254,7 +254,7 @@ def read_sheet(sheet_name: str, expected_columns: list[str], required: bool = Tr
     last_error = None
     for attempt in range(retries):
         try:
-            df = conn.read(worksheet=sheet_name, ttl=10)
+            df = conn.read(worksheet=sheet_name, ttl=60)
             if df is None:
                 return pd.DataFrame(columns=expected_columns)
             df = pd.DataFrame(df)
@@ -337,7 +337,7 @@ def load_all_data():
     }
 
 
-@st.cache_data(ttl=180, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def load_all_data_cached(cache_nonce: int = 0):
     return load_all_data()
 
@@ -867,11 +867,11 @@ def sidebar_nav():
         st.sidebar.success("Sesión de administrador activa")
     st.sidebar.caption("Modo de lectura optimizado para Google Sheets")
 
-
-    if st.sidebar.button("Actualizar datos desde Sheets", use_container_width=True):
-        load_all_data_cached.clear()
-        st.session_state.data_nonce = st.session_state.get("data_nonce", 0) + 1
-        st.rerun()
+    if st.session_state.is_admin:
+        if st.sidebar.button("Actualizar datos desde Sheets", use_container_width=True):
+            load_all_data_cached.clear()
+            st.session_state.data_nonce = st.session_state.get("data_nonce", 0) + 1
+            st.rerun()
     
 
     if st.sidebar.button("Cerrar sesión", use_container_width=True):
