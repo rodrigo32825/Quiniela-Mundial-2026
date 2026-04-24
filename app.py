@@ -45,6 +45,38 @@ DEFAULT_ADMIN_PASS = "admin123"
 st.set_page_config(page_title="Quiniela Mundial 2026", layout="wide")
 
 
+st.set_page_config(page_title="Quiniela Mundial 2026", layout="wide")
+
+st.markdown(
+    """
+    <style>
+    
+    /* Fondo general (degradado diagonal) */
+    .stApp {
+        background: linear-gradient(135deg, #0b3d2e 0%, #000000 70%);
+    }
+
+    /* Sidebar verde sólido */
+    section[data-testid="stSidebar"] {
+    background: linear-gradient(135deg, #ffffff 5%, #ffffff 85%, #b30000 100%);
+}
+    }
+
+    /* Quitar fondo interno gris del sidebar */
+    section[data-testid="stSidebar"] > div {
+        background: transparent;
+    }
+
+    /* Texto blanco en sidebar */
+    section[data-testid="stSidebar"] * {
+        color: #b8962e;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 def now_mx() -> datetime:
     return datetime.now(MEXICO_TZ)
 
@@ -359,7 +391,7 @@ def validate_login(participantes_df: pd.DataFrame, nombre: str, clave: str):
 
 def login_box(participantes_df: pd.DataFrame):
     st.title("Quiniela Mundial 2026")
-    st.caption("Acceso multiusuario conectado a Google Sheets")
+    st.caption("Ingresa tu usuario y contraseña")
 
     col1, col2 = st.columns(2)
     with col1:
@@ -769,7 +801,7 @@ def save_bonus_setup(partidos_df: pd.DataFrame, partido_id: str, pregunta: str, 
     partidos_df.loc[mask, "bonus_puntos"] = str(int(puntos))
     partidos_df.loc[mask, "bonus_respuesta_correcta"] = ""
     write_sheet(SHEET_PARTIDOS, partidos_df)
-    st.success("Bonus guardado correctamente. Si no lo ves de inmediato, cambia de módulo y vuelve a entrar.")
+    clear_data_cache()
 
 
 def save_bonus_correct_answer(partidos_df: pd.DataFrame, partido_id: str, respuesta_correcta: str):
@@ -801,6 +833,8 @@ def recalculate_and_save_all_points(data: dict):
 
 
 def sidebar_nav():
+    st.sidebar.image("tricolor.png", use_container_width=True)
+    st.sidebar.markdown("---")
     st.sidebar.title("Menú")
     options = ["INICIO", "RESULTADOS OFICIALES FIFA", "TABLA GENERAL DE PARTICIPANTES", "BONUS"]
     if st.session_state.is_admin:
@@ -845,7 +879,7 @@ def sidebar_nav():
 def render_inicio(config_map: dict):
     st.title("INICIO")
     st.subheader("Cómo funciona la quiniela")
-    st.write("Cada participante captura sus pronósticos por bloque y los guarda manualmente. Así evitamos recargas innecesarias y reducimos conflictos multiusuario.")
+    st.write("Cada participante captura sus pronósticos por fase.")
 
     st.markdown("### Puntos base")
     st.write("Aciertas ganador o empate: **1 punto**")
@@ -1079,8 +1113,6 @@ def render_official_results(data: dict):
     grupo_sel = st.selectbox("Grupo / bloque a capturar", grupos)
     df_block = df_fase[df_fase["grupo"] == grupo_sel].copy()
 
-    st.caption("Captura el marcador final y guarda cada partido de forma individual. Así evitamos guardar 0-0 en partidos que todavía no han terminado.")
-
     for _, row in df_block.iterrows():
         pid = normalize_text(row.get("partido_id"))
         prev_local = normalize_int(row.get("marcador_local"), 0) or 0
@@ -1088,44 +1120,26 @@ def render_official_results(data: dict):
         draft_local = normalize_int(st.session_state.draft_resultados.get(pid, {}).get("marcador_local"), prev_local) or 0
         draft_visit = normalize_int(st.session_state.draft_resultados.get(pid, {}).get("marcador_visitante"), prev_visit) or 0
 
-        st.markdown(f"**Partido {pid}**")
-        c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 2, 2])
+        c1, c2, c3, c4 = st.columns([2, 1, 1, 2])
         with c1:
             st.write(f"**{row['local']}**")
         with c2:
-            val_l = st.number_input(
-                f"res_l_{pid}",
-                min_value=0,
-                step=1,
-                value=draft_local,
-                label_visibility="collapsed",
-                key=f"res_l_{pid}_input",
-            )
+            val_l = st.number_input(f"res_l_{pid}", min_value=0, step=1, value=draft_local, label_visibility="collapsed")
         with c3:
-            val_v = st.number_input(
-                f"res_v_{pid}",
-                min_value=0,
-                step=1,
-                value=draft_visit,
-                label_visibility="collapsed",
-                key=f"res_v_{pid}_input",
-            )
+            val_v = st.number_input(f"res_v_{pid}", min_value=0, step=1, value=draft_visit, label_visibility="collapsed")
         with c4:
             st.write(f"**{row['visitante']}**")
-        with c5:
-            if st.button("Guardar este partido", key=f"guardar_resultado_{pid}", use_container_width=True):
-                try:
-                    st.session_state.draft_resultados[pid] = {"marcador_local": val_l, "marcador_visitante": val_v}
-                    df_single = df_block[df_block["partido_id"].astype(str).str.strip() == pid].copy()
-                    save_admin_results_batch(df_single, st.session_state.draft_resultados, data["resultados"])
-                    recalculate_and_save_all_points(load_all_data_cached(st.session_state.get("data_nonce", 0)))
-                    st.success(f"Resultado del partido {pid} guardado y puntos recalculados.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(str(e))
 
         st.session_state.draft_resultados[pid] = {"marcador_local": val_l, "marcador_visitante": val_v}
-        st.divider()
+
+    if st.button("Guardar resultados oficiales de este bloque", use_container_width=True):
+        try:
+            save_admin_results_batch(df_block, st.session_state.draft_resultados, data["resultados"])
+            recalculate_and_save_all_points(load_all_data_cached(st.session_state.get("data_nonce", 0)))
+            st.success("Resultados oficiales guardados.")
+            st.rerun()
+        except Exception as e:
+            st.error(str(e))
 
 
 def get_user_predictions_view(data: dict, participante: str) -> pd.DataFrame:
