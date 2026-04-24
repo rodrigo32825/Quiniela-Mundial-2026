@@ -1181,8 +1181,8 @@ def render_official_results(data: dict):
             st.rerun()
 
      
-         except Exception as e:
-              st.error(str(e))
+        except Exception as e:
+             st.error(str(e))
 
 
 def get_user_predictions_view(data: dict, participante: str) -> pd.DataFrame:
