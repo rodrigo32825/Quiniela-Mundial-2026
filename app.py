@@ -704,7 +704,7 @@ def save_user_predictions_batch(participante: str, partidos_block: pd.DataFrame,
 
     pronosticos_df = pronosticos_df.drop_duplicates(subset=["participante", "partido_id"], keep="last")
     write_sheet(SHEET_PRONOSTICOS, pronosticos_df)
-    clear_data_cache()
+    
 
 
 def save_bonus_answers_batch(participante: str, partidos_bonus: pd.DataFrame, draft: dict, bonus_df: pd.DataFrame):
@@ -1309,7 +1309,27 @@ def render_predictions_capture(data: dict):
     if st.button("Guardar pronósticos de este bloque", use_container_width=True, disabled=fase_cerrada):
         try:
             abiertos_df = df_block.iloc[0:0].copy() if fase_cerrada else df_block.copy()
-            save_user_predictions_batch(user, abiertos_df, st.session_state.draft_pronosticos, data["pronosticos"])
+            
+            
+            pronosticos_frescos = read_sheet(
+                SHEET_PRONOSTICOS,
+                ["participante", "partido_id", "marcador_local", "marcador_visitante", "fecha_guardado_iso"],
+                required=False,
+            )
+
+            save_user_predictions_batch(
+            user,
+            abiertos_df,
+            st.session_state.draft_pronosticos,
+            pronosticos_frescos,
+            )
+
+
+
+            
+            
+            
+            
             st.success("Pronósticos guardados correctamente.")
             st.rerun()
         except Exception as e:
