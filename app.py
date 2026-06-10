@@ -1419,10 +1419,13 @@ def render_bonus(data: dict):
                 prev = bonus_resp_user[bonus_resp_user["partido_id"] == pid]
                 prev_val = normalize_text(prev.iloc[0].get("respuesta")) if not prev.empty else ""
                 ya_respondio = bool(prev_val)
-                fase = normalize_text(row.get("fase"))
-                fase_cerrada = is_phase_closed(partidos, fase)
-                bloqueado = fase_cerrada or ya_respondio
-
+                partido_dt = parse_match_datetime(row)
+                bonus_cerrado = (
+                    partido_dt is not None
+                    and now_mx() >= partido_dt
+                )
+                bloqueado = bonus_cerrado or ya_respondio
+                
                 st.markdown(f"## {row['local']} vs {row['visitante']}")
                 st.caption(f"{row['fase']} | Grupo {row['grupo']} | {row['fecha']} {row['hora']}")
                 st.write(normalize_text(row.get("bonus_pregunta")))
@@ -1445,7 +1448,7 @@ def render_bonus(data: dict):
                 if ya_respondio:
                     st.success(f"Tu respuesta quedó guardada y bloqueada: {prev_val}")
                 elif fase_cerrada:
-                    st.caption("Este bonus ya cerró por fecha mínima de la fase. Ya no admite respuestas.")
+                    st.caption("Este bonus ya cerró porque el partido ya empezó.")
 
                 respuestas_bonus = bonus_resp[bonus_resp["partido_id"] == pid].copy() if not bonus_resp.empty else pd.DataFrame()
                 if not respuestas_bonus.empty:
@@ -1474,8 +1477,16 @@ def render_bonus(data: dict):
                         prev = bonus_resp_user[bonus_resp_user["partido_id"] == pid]
                         ya_respondio = not prev.empty and normalize_text(prev.iloc[0].get("respuesta")) != ""
 
-                        if not is_phase_closed(partidos, fase) and not ya_respondio:
-                            abiertos.append(row)
+            partido_dt = parse_match_datetime(row)      
+
+            bonus_cerrado = (
+                partido_dt is not None
+                and now_mx() >= partido_dt
+            )
+            
+            if not bonus_cerrado and not ya_respondio: 
+                abiertos.append(row)
+                
 
                     abiertos_df = pd.DataFrame(abiertos) if abiertos else bonus_pendientes.iloc[0:0].copy()
                     save_bonus_answers_batch(user, abiertos_df, st.session_state.draft_bonus, data["bonus_resp"])
