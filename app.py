@@ -1,698 +1,22 @@
-ChatGPT
+import jsonimport timefrom datetime import datetimefrom zoneinfo import ZoneInfo
 
+import pandas as pdimport streamlit as stfrom streamlit_gsheets import GSheetsConnection
 
+APP_TZ = "America/Mexico_City"MEXICO_TZ = ZoneInfo(APP_TZ)
 
+SHEET_CONFIG = "configuracion"SHEET_PARTICIPANTES = "participantes"SHEET_PARTIDOS = "partidos"SHEET_PRONOSTICOS = "pronosticos"SHEET_RESULTADOS = "resultados_oficiales"SHEET_PUNTOS = "puntos_partido"SHEET_BONUS_RESP = "bonus_respuestas"SHEET_BONUS_PUNTOS = "bonus_puntos"
 
+BONUS_FAVORITOS = {"Fase de grupos": 1,"Dieciseisavos": 2,"Octavos": 3,"Cuartos": 5,"Semifinal": 7,"Tercer Lugar": 8,"Final": 10,}
 
+FASES_ORDEN = ["Fase de grupos","Dieciseisavos","Octavos","Cuartos","Semifinal","Tercer Lugar","Final",]
 
-
-
-
-
-
-
-
-
-V4.1.txt
-Documento
-Vamos a revisar un código, que me abre una página URL, contectada a google sheets.
-Es multisesión, pero cada vez que abro un usuario, capturo datos, (marcadores pronósticos) para una quiniela, crashea, y me marca el siguiente error. 
-
-RuntimeError: This app has encountered an error. The original error message is redacted to prevent data leaks. Full error details have been recorded in the logs (if you're on Streamlit Cloud, click on 'Manage app' in the lower right of your app).
-Traceback:
-File "/mount/src/quiniela-mundial-2026/app.py", line 1215, in <module>
-    main()
-    ~~~~^^
-File "/mount/src/quiniela-mundial-2026/app.py", line 1184, in main
-    data = load_all_data_cached(st.session_state.get("data_nonce", 0))
-File "/home/adminuser/venv/lib/python3.14/site-packages/streamlit/runtime/caching/cache_utils.py", line 281, in __call__
-    return self._get_or_create_cached_value(args, kwargs, spinner_message)
-           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-File "/home/adminuser/venv/lib/python3.14/site-packages/streamlit/runtime/caching/cache_utils.py", line 326, in _get_or_create_cached_value
-    return self._handle_cache_miss(cache, value_key, func_args, func_kwargs)
-           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-File "/home/adminuser/venv/lib/python3.14/site-packages/streamlit/runtime/caching/cache_utils.py", line 385, in _handle_cache_miss
-    computed_value = self._info.func(*func_args, **func_kwargs)
-File "/mount/src/quiniela-mundial-2026/app.py", line 236, in load_all_data_cached
-    return load_all_data()
-File "/mount/src/quiniela-mundial-2026/app.py", line 227, in load_all_data
-    "bonus_puntos": read_sheet(
-                    ~~~~~~~~~~^
-        SHEET_BONUS_PUNTOS,
-        ^^^^^^^^^^^^^^^^^^^
-        ["participante", "partido_id", "puntos_bonus", "fecha_calculo_iso"],
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    ),
-    ^
-File "/mount/src/quiniela-mundial-2026/app.py", line 183, in read_sheet
-    raise RuntimeError(f"Error leyendo hoja '{sheet_name}': {e}")
-
-
-Anteriormente, intenté que la carga a sheets, sea unicamente cuando dan clic en botón guardar pronósticos, pero creo que cada vez que "respiran" los participantes, se carga y carga....aunque no estoy seguro que sea eso.
-
-dentro del código, busca que las conexiones sean a estas hojas:
-
-a ver, es que en algun momento tenia imagen, pero no se si la veas por aqui
-
-
-partamos de aqui, que modifico en el codigo, recuerda "antes", "despues"
-
-fijate que como le hacemos para que ese negro, sea transparente?
-
-te paso la imagen para "dejarlo perfecto"
-
-Imagen generada: Degradado verde a negro minimalista
-
-
-Editar
-
-
-
-Pasted text.txt
-Documento
-NO, ME CRASHEA DE NUEVO, REGRESEMOS A LA VERSIÓN QUE YA FUNCIONA, PENSEMOS EN OTRA SOLUCIÓN. tE ADJUNTO LA VERSION QUE SI FUNCIONA
-
-Me ayudas con este error? Me la mandó un participante 
-
-Sí, de hecho yo NO daría 5 puntos en fase de grupos.
-
-Porque recuerda cómo quedó tu sistema:
-
-Concepto	Puntos
-Acierto ganador/empate	+1
-Marcador exacto	+2
-Victoria favorito en grupos	+1
-Entonces un partido puede dar:
-
-1 punto (resultado)
-+
-2 puntos (marcador exacto)
-=
-3 puntos
-Si metes un bonus de:
-
-+5 puntos
-un bonus vale más que acertar un marcador exacto.
-
-Y eso distorsiona demasiado la tabla.
-
-Mi propuesta
-Ligar los bonus a la lógica de favoritos.
-
-Por ejemplo:
-
-Fase	Bonus
-Grupos	+1
-Dieciseisavos	+2
-Octavos	+3
-Cuartos	+4
-Semifinal	+5
-Tercer lugar	+6
-Final	+8
-Exactamente igual que los favoritos.
-
-¿Por qué me gusta?
-Porque intuitivamente:
-
-Bonus temprano = poco impacto
-
-Bonus tardío = mucho impacto
-
-Igual que el Mundial.
-
-Para el primer bonus
-Yo pondría:
-
-BONUS #1
-México vs Sudáfrica
-1 punto
-Suena poco.
-
-Pero piensa:
-
-Si tienes 20 participantes:
-
-nadie se pelea por 1 punto
-
-todos quieren responder
-
-el bonus es divertido
-
-no define la quiniela
-
-Mi variante favorita
-Bonus fijo:
-
-Fase de grupos = 2 puntos
-Dieciseisavos = 3 puntos
-Octavos = 4 puntos
-Cuartos = 5 puntos
-Semifinal = 6 puntos
-Tercer lugar = 7 puntos
-Final = 10 puntos
-Porque el bonus debe sentirse especial.
-
-Lo que haría yo
-Para esta edición:
-
-Fase de grupos
-🎁 Bonus = 2 puntos
-
-Porque:
-
-es menos que un marcador exacto + ganador (3)
-
-es suficientemente atractivo
-
-no rompe la clasificación
-
-Y para el primer bonus de México vs Sudáfrica:
-
-¿Qué ocurrirá primero en el partido?
-
-Gol
-
-Tarjeta amarilla
-
-Tiro de esquina
-
-Cambio de jugador
-
-Ninguno de los anteriores en el primer tiempo
-
-Valor: +2 puntos
-
-Me parece perfecto para inaugurar la quiniela. 🏆⚽🔥
-
-
-oye, la respuesta del bonus se cierra?
-
-Buena pregunta... y aquí es donde ya no me acuerdo si llegamos a implementarlo o solo lo diseñamos 😅
-
-Conceptualmente acordamos:
-
-✅ El participante responde una vez.
-✅ La respuesta queda bloqueada.
-✅ Ya no la puede cambiar.
-
-Eso sí lo recuerdo claramente.
-
-Pero hay 2 cierres distintos:
-
-Cierre 1 — Individual (creo que sí está)
-Cuando el participante selecciona:
-
-Tarjeta amarilla
-y guarda.
-
-La app muestra algo tipo:
-
-Tu respuesta quedó guardada y bloqueada: Tarjeta amarilla
-y ya no puede cambiarla.
-
-Cierre 2 — Temporal (no estoy seguro)
-Que el bonus deje de aceptar respuestas cuando:
-
-inicia el partido
-
-o cuando tú lo desactives
-
-Eso no recuerdo que lo hayamos terminado.
-
-Mi recomendación para mañana
-No dependería del cierre automático todavía.
-
-Haría esto:
-
-Publicas bonus.
-
-La gente responde.
-
-5 minutos antes del partido:
-
-entras a Admin
-
-deshabilitas el bonus
-
-Se acabó.
-
-Lo que sí te recomiendo verificar
-Haz una prueba con dos usuarios:
-
-Usuario A
-responde opción 1
-
-guarda
-
-Usuario A otra vez
-intenta regresar
-
-intenta cambiar a opción 2
-
-Si no puede:
-
-✅ El bloqueo individual funciona.
-
-Lo ideal para la siguiente versión
-Agregar:
-
-fecha_cierre_bonus
-en la hoja partidos o configuracion.
-
-Y que automáticamente:
-
-if now >= fecha_cierre_bonus:
-    bonus cerrado
-Pero sinceramente, para el primer partido, yo lo operaría manualmente.
-
-Lo más importante
-Antes de publicar el primer bonus, prueba esto:
-
-Usuario responde.
-
-Sale el mensaje:
-
-Tu respuesta quedó guardada y bloqueada.
-
-Recarga la página.
-
-Verifica que siga bloqueado.
-
-Si eso funciona, ya tienes el 90% del riesgo controlado. El cierre por hora lo puedes hacer manualmente para el inaugural. 🏆⚽
-
-
-como podemos revisarlo?
-
-Pensado durante un par de segundos
-Lo revisamos en 2 niveles: en código y en prueba real.
-
-1. En código
-Busca dentro de render_bonus() algo como esto:
-
-fase = normalize_text(row.get("fase"))
-fase_cerrada = is_phase_closed(partidos, fase)
-bloqueado = fase_cerrada or ya_respondio
-Si existe eso, entonces el bonus sí se cierra automáticamente por fase, igual que los pronósticos: cuando llega la fecha mínima de esa fase. En la versión que me pasaste, esa lógica sí aparece en render_bonus(). 
-
-
-También revisa que el radio use:
-
-disabled=bloqueado
-Eso significa que si ya respondió o si la fase ya cerró, ya no puede mover la respuesta. 
-
-
-2. Prueba real rápida
-Haz esto con un usuario de prueba:
-
-Activa un bonus para un partido de Fase de grupos.
-
-En Sheets cambia la columna fecha y hora de todos los partidos de esa fase o al menos asegúrate de que la fecha mínima de esa fase sea anterior a este momento.
-
-En la app dale Actualizar datos desde Sheets.
-
-Entra como participante al módulo BONUS.
-
-Resultado esperado:
-
-Este bonus ya cerró por fecha mínima de la fase. Ya no admite respuestas.
-y las opciones deben aparecer bloqueadas.
-
-Ojo importante
-El cierre del bonus no depende de deadline_iso; depende de fecha + hora, igual que los pronósticos.
-
-
-
-Pasted text.txt
-Documento
-a ver.....ayudame a revisar el codigo mejor, antes de mover
-
-y me confirmas si es la ultima versión que tienes?
-
-Pensado durante 6s
-Sí: esta sí parece ser la última versión que tengo de tu código, porque ya trae los cambios más recientes que veníamos haciendo:
-
-TTL=300
-
-clear_data_cache() desactivado
-
-botón admin “Actualizar datos desde Sheets”
-
-lectura fresca de pronosticos antes de guardar
-
-resultados oficiales con checkbox “Guardar este resultado”
-
-bonus con bloqueo por respuesta ya guardada y por cierre de fase 
-
- 
-
- 
-
-
-Sobre tu pregunta del bonus: sí, el bonus se cierra automáticamente por fase. En render_bonus(), el código calcula:
-
-fase_cerrada = is_phase_closed(partidos, fase)
-bloqueado = fase_cerrada or ya_respondio
-y luego el radio queda deshabilitado con disabled=bloqueado. Eso significa: si la fase ya cerró o si el participante ya respondió, ya no puede cambiar/mandar respuesta. 
-
-
-También al guardar respuestas, vuelve a validar que la fase no esté cerrada y que el usuario no haya respondido antes; si no cumple, no lo mete en abiertos_df. 
-
-
-Conclusión: el bonus se cierra con la misma lógica que los pronósticos: fecha mínima de la fase, usando fecha + hora de la hoja partidos, no deadline_iso.
-
-
-ah caray, pero entonces no podré meter bonus por día?
-
-😳 ¡Exacto! Acabas de detectar un efecto secundario importante.
-
-Con el código actual:
-
-fase_cerrada = is_phase_closed(partidos, fase)
-el bonus hereda el cierre de la fase. 
-
-
-Eso significa:
-
-Fase de grupos
-Si el primer partido es:
-
-México vs Sudáfrica
-11 junio 2026
-en cuanto inicia ese partido:
-
-Fase de grupos = cerrada
-y automáticamente:
-
-TODOS los bonus de grupos se cierran
-aunque quieras sacar un bonus para:
-
-Brasil vs Alemania
-15 junio
-o
-
-Argentina vs Inglaterra
-20 junio
-Entonces la respuesta es:
-No. Con la versión actual NO puedes tener bonus por día.
-
-Sólo puedes tener bonus antes del inicio de la fase.
-
-Lo bueno
-No hay que reescribir el sistema.
-
-La solución elegante es que el bonus deje de depender de la fase y dependa del partido del bonus.
-
-En lugar de:
-
-fase_cerrada = is_phase_closed(partidos, fase)
-sería:
-
-partido_dt = parse_match_datetime(row)
-bonus_cerrado = partido_dt is not None and now_mx() >= partido_dt
-O mejor:
-
-bonus_cerrado = now_mx() >= parse_match_datetime(row)
-donde row es el partido que tiene el bonus.
-
-Resultado
-Bonus México vs Sudáfrica
-Se cierra cuando inicia México vs Sudáfrica.
-
-Bonus Brasil vs Alemania
-Se cierra cuando inicia Brasil vs Alemania.
-
-Bonus Final
-Se cierra cuando inicia la Final.
-
-Mi recomendación
-Para cómo estás usando la quiniela (un bonus ocasional, no uno por partido):
-
-👉 sí vale la pena hacer este cambio.
-
-Es pequeño, localizado y mucho más lógico.
-
-Porque si no, en cuanto empiece el Mundial, la sección BONUS prácticamente queda inutilizada para toda la fase de grupos.
-
-Y creo que tu idea es justamente lo contrario:
-
-"Hoy saco un bonus para México."
-
-"Mañana saco uno para Brasil."
-
-"Pasado mañana uno para Argentina."
-
-Eso requiere cierre por partido, no por fase.
-
-
-ok, dame la actrualización de forma sencilla, lo haré desde github y quiero que me ayudes a:
-
-1-. buscar la línea de codigo actual
-
-2.- la sustitución
-
-Perfecto. Y además este cambio es de los que me gustan porque es quirúrgico: no toca Sheets, no toca puntos, no toca pronósticos, no toca cache. Sólo cambia cuándo se bloquea el bonus.
-
-PASO 1
-Busca dentro de:
-
-def render_bonus(data: dict):
-Este bloque exacto:
-
-ACTUAL
-fase = normalize_text(row.get("fase"))
-fase_cerrada = is_phase_closed(partidos, fase)
-bloqueado = fase_cerrada or ya_respondio
-SUSTITUIR POR
-partido_dt = parse_match_datetime(row)
-
-bonus_cerrado = (
-    partido_dt is not None
-    and now_mx() >= partido_dt
-)
-
-bloqueado = bonus_cerrado or ya_respondio
-PASO 2
-Un poquito más abajo encontrarás:
-
-ACTUAL
-elif fase_cerrada:
-    st.caption(
-        "Este bonus ya cerró por fecha mínima de la fase. Ya no admite respuestas."
-    )
-SUSTITUIR POR
-elif bonus_cerrado:
-    st.caption(
-        "Este bonus ya cerró porque el partido ya inició."
-    )
-PASO 3
-Más abajo, dentro del botón:
-
-if st.button("Guardar respuestas bonus")
-busca esto:
-
-ACTUAL
-if not is_phase_closed(partidos, fase) and not ya_respondio:
-    abiertos.append(row)
-SUSTITUIR POR
-partido_dt = parse_match_datetime(row)
-
-bonus_cerrado = (
-    partido_dt is not None
-    and now_mx() >= partido_dt
-)
-
-if not bonus_cerrado and not ya_respondio:
-    abiertos.append(row)
-RESULTADO
-Antes:
-
-México vs Sudáfrica inicia
-↓
-Toda la Fase de grupos cerrada
-↓
-Todos los bonus cerrados
-Después:
-
-México vs Sudáfrica inicia
-↓
-Sólo cierra el bonus de México vs Sudáfrica
-
-Brasil vs Alemania
-↓
-sigue abierto
-
-Argentina vs Inglaterra
-↓
-sigue abierto
-PRUEBA RÁPIDA DESPUÉS DEL COMMIT
-Haz una prueba en Sheets:
-
-Crea bonus para un partido.
-
-Pon fecha/hora de ese partido en el pasado.
-
-Espera TTL o usa:
-
-Actualizar datos desde Sheets
-Entra con participante.
-
-Deberías ver:
-
-Este bonus ya cerró porque el partido ya inició.
-y las opciones bloqueadas.
-
-Si encuentras exactamente esos 3 bloques, estamos modificando la versión correcta del código que me acabas de compartir. 🚀
-
-
-ayudame de volada, me marco un error y tengo gente capturando!!
-
-File "/mount/src/quiniela-mundial-2026/app.py", line 1480
-              partido_dt = parse_match_datetime(row)
-             ^
-SyntaxError: expected 'except' or 'finally' block
-
-🚨 Tranquilo. Ese error es de indentación y por eso la app ni siquiera arranca.
-
-El mensaje:
-
-SyntaxError: expected 'except' or 'finally' block
-significa que metiste el código nuevo dentro de un try: y Python esperaba encontrar:
-
-except:
-o
-
-finally:
-pero encontró:
-
-partido_dt = parse_match_datetime(row)
-SOLUCIÓN RÁPIDA
-Ve a la línea cercana a:
-
-if st.button("Guardar respuestas bonus", use_container_width=True):
-    try:
-y revisa que el bloque quede exactamente así:
-
-if st.button("Guardar respuestas bonus", use_container_width=True):
-    try:
-        abiertos = []
-
-        for _, row in bonus_pendientes.iterrows():
-
-            pid = normalize_text(row.get("partido_id"))
-
-            prev = bonus_resp_user[
-                bonus_resp_user["partido_id"] == pid
-            ]
-
-            ya_respondio = (
-                not prev.empty
-                and normalize_text(prev.iloc[0].get("respuesta")) != ""
-            )
-
-            partido_dt = parse_match_datetime(row)
-
-            bonus_cerrado = (
-                partido_dt is not None
-                and now_mx() >= partido_dt
-            )
-
-            if not bonus_cerrado and not ya_respondio:
-                abiertos.append(row)
-
-        abiertos_df = (
-            pd.DataFrame(abiertos)
-            if abiertos
-            else bonus_pendientes.iloc[0:0].copy()
-        )
-
-        save_bonus_answers_batch(
-            user,
-            abiertos_df,
-            st.session_state.draft_bonus,
-            data["bonus_resp"],
-        )
-
-        st.success("Respuestas bonus guardadas.")
-        st.rerun()
-
-    except Exception as e:
-        st.error(str(e))
-MÁS RÁPIDO TODAVÍA
-Si tienes gente capturando AHORA:
-
-REVERSA EL CAMBIO
-Busca donde pusiste:
-
-partido_dt = parse_match_datetime(row)
-bonus_cerrado = ...
-y vuelve temporalmente a:
-
-if not is_phase_closed(partidos, fase) and not ya_respondio:
-    abiertos.append(row)
-Haz commit.
-
-Deploy.
-
-🚀 La app vuelve a levantar.
-
-Luego ya hacemos el cambio del bonus con calma.
-
-Porque ahorita el problema no es el bonus.
-
-👉 El problema es que la app no arranca.
-
-
-import json
-import time
-from datetime import datetime
-from zoneinfo import ZoneInfo
-
-import pandas as pd
-import streamlit as st
-from streamlit_gsheets import GSheetsConnection
-
-APP_TZ = "America/Mexico_City"
-MEXICO_TZ = ZoneInfo(APP_TZ)
-
-SHEET_CONFIG = "configuracion"
-SHEET_PARTICIPANTES = "participantes"
-SHEET_PARTIDOS = "partidos"
-SHEET_PRONOSTICOS = "pronosticos"
-SHEET_RESULTADOS = "resultados_oficiales"
-SHEET_PUNTOS = "puntos_partido"
-SHEET_BONUS_RESP = "bonus_respuestas"
-SHEET_BONUS_PUNTOS = "bonus_puntos"
-
-BONUS_FAVORITOS = {
-"Fase de grupos": 1,
-"Dieciseisavos": 2,
-"Octavos": 3,
-"Cuartos": 5,
-"Semifinal": 7,
-"Tercer Lugar": 8,
-"Final": 10,
-}
-
-FASES_ORDEN = [
-"Fase de grupos",
-"Dieciseisavos",
-"Octavos",
-"Cuartos",
-"Semifinal",
-"Tercer Lugar",
-"Final",
-]
-
-DEFAULT_ADMIN_USER = "admin"
-DEFAULT_ADMIN_PASS = "admin123"
+DEFAULT_ADMIN_USER = "admin"DEFAULT_ADMIN_PASS = "admin123"
 
 st.set_page_config(page_title="Quiniela Mundial 2026", layout="wide")
 
 st.set_page_config(page_title="Quiniela Mundial 2026", layout="wide")
 
-st.markdown(
-"""
-
+st.markdown("""
 
 /* Fondo general (degradado diagonal) */
 .stApp {
@@ -702,8 +26,8 @@ st.markdown(
 /* Sidebar verde sólido */
 section[data-testid="stSidebar"] {
 background: linear-gradient(135deg, #ffffff 5%, #ffffff 85%, #b30000 100%);
-}
-}
+
+}}
 
 /* Quitar fondo interno gris del sidebar */
 section[data-testid="stSidebar"] > div {
@@ -718,55 +42,18 @@ section[data-testid="stSidebar"] * {
 </style>
 """,
 unsafe_allow_html=True
+
 )
 
-def now_mx() -> datetime:
-return datetime.now(MEXICO_TZ)
+def now_mx() -> datetime:return datetime.now(MEXICO_TZ)
 
-def normalize_text(value) -> str:
-if value is None:
-return ""
-try:
-if pd.isna(value):
-return ""
-except Exception:
-pass
-return str(value).strip()
+def normalize_text(value) -> str:if value is None:return ""try:if pd.isna(value):return ""except Exception:passreturn str(value).strip()
 
-def normalize_int(value, default=None):
-if value is None:
-return default
-try:
-if pd.isna(value):
-return default
-except Exception:
-pass
-text = str(value).strip()
-if text == "":
-return default
-try:
-return int(float(text))
-except Exception:
-return default
+def normalize_int(value, default=None):if value is None:return defaulttry:if pd.isna(value):return defaultexcept Exception:passtext = str(value).strip()if text == "":return defaulttry:return int(float(text))except Exception:return default
 
-def safe_json_load(value, default):
-if value is None:
-return default
-if isinstance(value, (list, dict)):
-return value
-text = str(value).strip()
-if not text:
-return default
-try:
-return json.loads(text)
-except Exception:
-return default
+def safe_json_load(value, default):if value is None:return defaultif isinstance(value, (list, dict)):return valuetext = str(value).strip()if not text:return defaulttry:return json.loads(text)except Exception:return default
 
-def parse_match_datetime(row) -> datetime | None:
-fecha = normalize_text(row.get("fecha"))
-hora = normalize_text(row.get("hora"))
-if not fecha:
-return None
+def parse_match_datetime(row) -> datetime | None:fecha = normalize_text(row.get("fecha"))hora = normalize_text(row.get("hora"))if not fecha:return None
 
 candidates = [f"{fecha} {hora}".strip(), fecha]
 formats = ["%d/%m/%Y %H:%M", "%Y-%m-%d %H:%M", "%d/%m/%Y", "%Y-%m-%d"]
@@ -779,104 +66,28 @@ for text in candidates:
         except Exception:
             pass
 return None
-def get_phase_min_datetime(partidos_df: pd.DataFrame, fase: str) -> datetime | None:
-if partidos_df is None or partidos_df.empty:
-return None
-df = partidos_df[partidos_df["fase"].astype(str).str.strip() == str(fase).strip()].copy()
-if df.empty:
-return None
-dts = [parse_match_datetime(row) for _, row in df.iterrows()]
-dts = [dt for dt in dts if dt is not None]
-return min(dts) if dts else None
 
-def is_phase_closed(partidos_df: pd.DataFrame, fase: str) -> bool:
-phase_min_dt = get_phase_min_datetime(partidos_df, fase)
-return phase_min_dt is not None and now_mx() >= phase_min_dt
+def get_phase_min_datetime(partidos_df: pd.DataFrame, fase: str) -> datetime | None:if partidos_df is None or partidos_df.empty:return Nonedf = partidos_df[partidos_df["fase"].astype(str).str.strip() == str(fase).strip()].copy()if df.empty:return Nonedts = [parse_match_datetime(row) for _, row in df.iterrows()]dts = [dt for dt in dts if dt is not None]return min(dts) if dts else None
 
-def sort_partidos_df(df: pd.DataFrame) -> pd.DataFrame:
-if df is None or df.empty:
-return df.copy()
-out = df.copy()
-out["_fase_order"] = out["fase"].astype(str).apply(lambda x: FASES_ORDEN.index(x) if x in FASES_ORDEN else 999)
-out["_grupo_order"] = out["grupo"].astype(str).fillna("").replace("nan", "")
-out["fecha_partido_dt"] = out.apply(parse_match_datetime, axis=1)
-out["_fecha_sort"] = out["fecha_partido_dt"].apply(lambda x: x if x is not None else datetime.max.replace(tzinfo=MEXICO_TZ))
-out = out.sort_values(by=["_fase_order", "_grupo_order", "_fecha_sort", "partido_id"], ascending=[True, True, True, True])
-return out.drop(columns=["_fase_order", "_grupo_order", "_fecha_sort"], errors="ignore").reset_index(drop=True)
+def is_phase_closed(partidos_df: pd.DataFrame, fase: str) -> bool:phase_min_dt = get_phase_min_datetime(partidos_df, fase)return phase_min_dt is not None and now_mx() >= phase_min_dt
 
-def get_active_bonus_df(partidos_df: pd.DataFrame) -> pd.DataFrame:
-if partidos_df is None or partidos_df.empty:
-return partidos_df.copy()
-df = partidos_df.copy()
-df["partido_id"] = df["partido_id"].astype(str).str.strip()
-df = df[
-df["bonus_habilitado"].astype(str).apply(to_bool)
-& df["bonus_pregunta"].astype(str).str.strip().ne("")
-].copy()
-if df.empty:
-return df
-df = sort_partidos_df(df)
-df["bonus_resuelto"] = df["bonus_respuesta_correcta"].astype(str).str.strip().ne("")
-return df
+def sort_partidos_df(df: pd.DataFrame) -> pd.DataFrame:if df is None or df.empty:return df.copy()out = df.copy()out["_fase_order"] = out["fase"].astype(str).apply(lambda x: FASES_ORDEN.index(x) if x in FASES_ORDEN else 999)out["_grupo_order"] = out["grupo"].astype(str).fillna("").replace("nan", "")out["fecha_partido_dt"] = out.apply(parse_match_datetime, axis=1)out["_fecha_sort"] = out["fecha_partido_dt"].apply(lambda x: x if x is not None else datetime.max.replace(tzinfo=MEXICO_TZ))out = out.sort_values(by=["_fase_order", "_grupo_order", "_fecha_sort", "partido_id"], ascending=[True, True, True, True])return out.drop(columns=["_fase_order", "_grupo_order", "_fecha_sort"], errors="ignore").reset_index(drop=True)
 
-def ensure_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
-df = df.copy()
-for col in columns:
-if col not in df.columns:
-df[col] = ""
-return df[columns]
+def get_active_bonus_df(partidos_df: pd.DataFrame) -> pd.DataFrame:if partidos_df is None or partidos_df.empty:return partidos_df.copy()df = partidos_df.copy()df["partido_id"] = df["partido_id"].astype(str).str.strip()df = df[df["bonus_habilitado"].astype(str).apply(to_bool)& df["bonus_pregunta"].astype(str).str.strip().ne("")].copy()if df.empty:return dfdf = sort_partidos_df(df)df["bonus_resuelto"] = df["bonus_respuesta_correcta"].astype(str).str.strip().ne("")return df
 
-def serialize_df(df: pd.DataFrame) -> pd.DataFrame:
-out = df.copy()
-for col in out.columns:
-out[col] = out[col].fillna("").astype(str)
-return out
+def ensure_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:df = df.copy()for col in columns:if col not in df.columns:df[col] = ""return df[columns]
 
-def to_bool(value) -> bool:
-text = normalize_text(value).lower()
-if text in ["1", "1.0", "true", "verdadero", "si", "sí", "x", "yes", "y"]:
-return True
-try:
-return float(text) == 1.0
-except Exception:
-return False
+def serialize_df(df: pd.DataFrame) -> pd.DataFrame:out = df.copy()for col in out.columns:out[col] = out[col].fillna("").astype(str)return out
 
-def init_state():
-defaults = {
-"logged_in": False,
-"user_name": "",
-"is_admin": False,
-"nav": "INICIO",
-"nav_radio": "INICIO",
-"draft_resultados": {},
-"draft_pronosticos": {},
-"draft_bonus": {},
-"data_nonce": 0,
-}
-for key, value in defaults.items():
-if key not in st.session_state:
-st.session_state[key] = value
+def to_bool(value) -> bool:text = normalize_text(value).lower()if text in ["1", "1.0", "true", "verdadero", "si", "sí", "x", "yes", "y"]:return Truetry:return float(text) == 1.0except Exception:return False
 
-def get_conn():
-try:
-return st.connection("gsheets", type=GSheetsConnection)
-except Exception:
-return None
+def init_state():defaults = {"logged_in": False,"user_name": "","is_admin": False,"nav": "INICIO","nav_radio": "INICIO","draft_resultados": {},"draft_pronosticos": {},"draft_bonus": {},"data_nonce": 0,}for key, value in defaults.items():if key not in st.session_state:st.session_state[key] = value
 
-def render_connection_help():
-st.error("No se pudo conectar con Google Sheets.")
-st.code(
-'# .streamlit/secrets.toml\n[connections.gsheets]\nspreadsheet = "TU_URL_O_NOMBRE"',
-language="toml",
-)
-st.caption("En tu caso actual puedes seguir usando la URL del archivo QUINIELA 2026 DB en secrets.")
+def get_conn():try:return st.connection("gsheets", type=GSheetsConnection)except Exception:return None
 
-def read_sheet(sheet_name: str, expected_columns: list[str], required: bool = True, retries: int = 1) -> pd.DataFrame:
-conn = get_conn()
-if conn is None:
-if required:
-raise RuntimeError("No se encontró la conexión a Google Sheets.")
-return pd.DataFrame(columns=expected_columns)
+def render_connection_help():st.error("No se pudo conectar con Google Sheets.")st.code('# .streamlit/secrets.toml\n[connections.gsheets]\nspreadsheet = "TU_URL_O_NOMBRE"',language="toml",)st.caption("En tu caso actual puedes seguir usando la URL del archivo QUINIELA 2026 DB en secrets.")
+
+def read_sheet(sheet_name: str, expected_columns: list[str], required: bool = True, retries: int = 1) -> pd.DataFrame:conn = get_conn()if conn is None:if required:raise RuntimeError("No se encontró la conexión a Google Sheets.")return pd.DataFrame(columns=expected_columns)
 
 last_error = None
 for attempt in range(retries):
@@ -896,10 +107,8 @@ for attempt in range(retries):
 if required:
     raise RuntimeError(f"Error leyendo hoja '{sheet_name}': {last_error}")
 return pd.DataFrame(columns=expected_columns)
-def write_sheet(sheet_name: str, df: pd.DataFrame, retries: int = 3):
-conn = get_conn()
-if conn is None:
-raise RuntimeError("No se encontró la conexión a Google Sheets.")
+
+def write_sheet(sheet_name: str, df: pd.DataFrame, retries: int = 3):conn = get_conn()if conn is None:raise RuntimeError("No se encontró la conexión a Google Sheets.")
 
 last_error = None
 for attempt in range(retries):
@@ -912,88 +121,20 @@ for attempt in range(retries):
             time.sleep(0.6 * (attempt + 1))
 
 raise RuntimeError(f"Error escribiendo hoja '{sheet_name}': {last_error}")
-def load_all_data():
-return {
-"config": read_sheet(SHEET_CONFIG, ["clave", "valor"], required=True),
-"participantes": read_sheet(
-SHEET_PARTICIPANTES,
-["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],
-required=True,
-),
-"partidos": read_sheet(
-SHEET_PARTIDOS,
-[
-"partido_id", "fase", "grupo", "fecha", "hora", "ciudad", "estadio",
-"local", "visitante", "deadline_iso", "bonus_habilitado", "bonus_pregunta",
-"bonus_opciones_json", "bonus_puntos", "bonus_respuesta_correcta", "activo",
-],
-required=True,
-),
-"pronosticos": read_sheet(
-SHEET_PRONOSTICOS,
-["participante", "partido_id", "marcador_local", "marcador_visitante", "fecha_guardado_iso"],
-required=False,
-),
-"resultados": read_sheet(
-SHEET_RESULTADOS,
-["partido_id", "marcador_local", "marcador_visitante", "fecha_guardado_iso"],
-required=False,
-),
-"puntos": read_sheet(
-SHEET_PUNTOS,
-[
-"participante", "partido_id", "fase", "acierto_resultado", "exacto",
-"puntos_base", "puntos_favorito", "total_partido", "fecha_calculo_iso",
-],
-required=False,
-),
-"bonus_resp": read_sheet(
-SHEET_BONUS_RESP,
-["participante", "partido_id", "respuesta", "fecha_guardado_iso"],
-required=False,
-),
-"bonus_puntos": read_sheet(
-SHEET_BONUS_PUNTOS,
-["participante", "partido_id", "puntos_bonus", "fecha_calculo_iso"],
-required=False,
-),
-}
 
-@st.cache_data(ttl=300, show_spinner=False)
-def load_all_data_cached(cache_nonce: int = 0):
-return load_all_data()
+def load_all_data():return {"config": read_sheet(SHEET_CONFIG, ["clave", "valor"], required=True),"participantes": read_sheet(SHEET_PARTICIPANTES,["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],required=True,),"partidos": read_sheet(SHEET_PARTIDOS,["partido_id", "fase", "grupo", "fecha", "hora", "ciudad", "estadio","local", "visitante", "deadline_iso", "bonus_habilitado", "bonus_pregunta","bonus_opciones_json", "bonus_puntos", "bonus_respuesta_correcta", "activo",],required=True,),"pronosticos": read_sheet(SHEET_PRONOSTICOS,["participante", "partido_id", "marcador_local", "marcador_visitante", "fecha_guardado_iso"],required=False,),"resultados": read_sheet(SHEET_RESULTADOS,["partido_id", "marcador_local", "marcador_visitante", "fecha_guardado_iso"],required=False,),"puntos": read_sheet(SHEET_PUNTOS,["participante", "partido_id", "fase", "acierto_resultado", "exacto","puntos_base", "puntos_favorito", "total_partido", "fecha_calculo_iso",],required=False,),"bonus_resp": read_sheet(SHEET_BONUS_RESP,["participante", "partido_id", "respuesta", "fecha_guardado_iso"],required=False,),"bonus_puntos": read_sheet(SHEET_BONUS_PUNTOS,["participante", "partido_id", "puntos_bonus", "fecha_calculo_iso"],required=False,),}
 
-def clear_data_cache():
-# Desactivado para evitar exceso de lecturas a Google Sheets.
-# Los datos se actualizarán por TTL o con botón manual.
-pass
+@st.cache_data(ttl=300, show_spinner=False)def load_all_data_cached(cache_nonce: int = 0):return load_all_data()
 
-def get_config_map(config_df: pd.DataFrame) -> dict:
-result = {}
-for _, row in config_df.iterrows():
-result[normalize_text(row.get("clave"))] = normalize_text(row.get("valor"))
-return result
+def clear_data_cache():# Desactivado para evitar exceso de lecturas a Google Sheets.# Los datos se actualizarán por TTL o con botón manual.pass
 
-def upsert_config_value(config_df: pd.DataFrame, clave: str, valor: str) -> pd.DataFrame:
-config_df = ensure_columns(config_df, ["clave", "valor"])
-mask = config_df["clave"].astype(str).str.strip().eq(clave)
-if mask.any():
-config_df.loc[mask, "valor"] = valor
-else:
-config_df.loc[len(config_df)] = [clave, valor]
-return config_df
+def get_config_map(config_df: pd.DataFrame) -> dict:result = {}for _, row in config_df.iterrows():result[normalize_text(row.get("clave"))] = normalize_text(row.get("valor"))return result
 
-def get_participantes_solo_usuarios(participantes_df: pd.DataFrame) -> pd.DataFrame:
-if participantes_df.empty:
-return participantes_df.copy()
-df = participantes_df.copy()
-return df[~df["es_admin"].apply(to_bool)].reset_index(drop=True)
+def upsert_config_value(config_df: pd.DataFrame, clave: str, valor: str) -> pd.DataFrame:config_df = ensure_columns(config_df, ["clave", "valor"])mask = config_df["clave"].astype(str).str.strip().eq(clave)if mask.any():config_df.loc[mask, "valor"] = valorelse:config_df.loc[len(config_df)] = [clave, valor]return config_df
 
-def validate_login(participantes_df: pd.DataFrame, nombre: str, clave: str):
-nombre = nombre.strip().lower()
-clave = clave.strip()
-if not nombre or not clave:
-return None
+def get_participantes_solo_usuarios(participantes_df: pd.DataFrame) -> pd.DataFrame:if participantes_df.empty:return participantes_df.copy()df = participantes_df.copy()return df[~df["es_admin"].apply(to_bool)].reset_index(drop=True)
+
+def validate_login(participantes_df: pd.DataFrame, nombre: str, clave: str):nombre = nombre.strip().lower()clave = clave.strip()if not nombre or not clave:return None
 
 df = participantes_df.copy()
 df["nombre_norm"] = df["nombre"].astype(str).str.strip().str.lower()
@@ -1005,9 +146,8 @@ if row.empty:
 
 payload = row.iloc[0].to_dict()
 return {"nombre": normalize_text(payload.get("nombre")), "is_admin": to_bool(payload.get("es_admin"))}
-def login_box(participantes_df: pd.DataFrame):
-st.title("Quiniela Mundial 2026")
-st.caption("Ingresa tu usuario y contraseña")
+
+def login_box(participantes_df: pd.DataFrame):st.title("Quiniela Mundial 2026")st.caption("Ingresa tu usuario y contraseña")
 
 col1, col2 = st.columns(2)
 with col1:
@@ -1024,34 +164,10 @@ if st.button("Entrar", use_container_width=True):
         st.rerun()
     else:
         st.error("Usuario o clave incorrectos.")
-def ensure_admin_exists(data: dict):
-participantes = read_sheet(
-SHEET_PARTICIPANTES,
-["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],
-).copy()
-if participantes.empty:
-participantes.loc[len(participantes)] = [
-DEFAULT_ADMIN_USER,
-DEFAULT_ADMIN_PASS,
-"[]",
-"",
-"",
-"1",
-]
-write_sheet(SHEET_PARTICIPANTES, participantes)
-clear_data_cache()
 
-def ingest_calendar_csv(df_csv: pd.DataFrame, partidos_df: pd.DataFrame) -> pd.DataFrame:
-partidos_df = ensure_columns(
-partidos_df,
-[
-"partido_id", "fase", "grupo", "fecha", "hora", "ciudad", "estadio",
-"local", "visitante", "deadline_iso", "bonus_habilitado", "bonus_pregunta",
-"bonus_opciones_json", "bonus_puntos", "bonus_respuesta_correcta", "activo",
-],
-)
-df = df_csv.copy()
-df.columns = [normalize_text(c).lower() for c in df.columns]
+def ensure_admin_exists(data: dict):participantes = read_sheet(SHEET_PARTICIPANTES,["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],).copy()if participantes.empty:participantes.loc[len(participantes)] = [DEFAULT_ADMIN_USER,DEFAULT_ADMIN_PASS,"[]","","","1",]write_sheet(SHEET_PARTICIPANTES, participantes)clear_data_cache()
+
+def ingest_calendar_csv(df_csv: pd.DataFrame, partidos_df: pd.DataFrame) -> pd.DataFrame:partidos_df = ensure_columns(partidos_df,["partido_id", "fase", "grupo", "fecha", "hora", "ciudad", "estadio","local", "visitante", "deadline_iso", "bonus_habilitado", "bonus_pregunta","bonus_opciones_json", "bonus_puntos", "bonus_respuesta_correcta", "activo",],)df = df_csv.copy()df.columns = [normalize_text(c).lower() for c in df.columns]
 
 mapper = {
     "id": "partido_id",
@@ -1112,25 +228,12 @@ for _, row in normalized.iterrows():
 
 partidos_df = partidos_df.drop_duplicates(subset=["partido_id"], keep="last")
 return sort_partidos_df(partidos_df)
-def result_type(local: int, visitante: int) -> str:
-if local > visitante:
-return "L"
-if visitante > local:
-return "V"
-return "E"
 
-def puntos_partido(pron_local: int, pron_visit: int, of_local: int, of_visit: int) -> dict:
-acierto = int(result_type(pron_local, pron_visit) == result_type(of_local, of_visit))
-exacto = int(pron_local == of_local and pron_visit == of_visit)
-puntos_base = acierto * 1 + exacto * 2
-return {"acierto_resultado": acierto, "exacto": exacto, "puntos_base": puntos_base}
+def result_type(local: int, visitante: int) -> str:if local > visitante:return "L"if visitante > local:return "V"return "E"
 
-def recompute_points(data: dict):
-participantes = get_participantes_solo_usuarios(data["participantes"])
-partidos = data["partidos"].copy()
-pronosticos = data["pronosticos"].copy()
-resultados = data["resultados"].copy()
-bonus_resp = data["bonus_resp"].copy()
+def puntos_partido(pron_local: int, pron_visit: int, of_local: int, of_visit: int) -> dict:acierto = int(result_type(pron_local, pron_visit) == result_type(of_local, of_visit))exacto = int(pron_local == of_local and pron_visit == of_visit)puntos_base = acierto * 1 + exacto * 2return {"acierto_resultado": acierto, "exacto": exacto, "puntos_base": puntos_base}
+
+def recompute_points(data: dict):participantes = get_participantes_solo_usuarios(data["participantes"])partidos = data["partidos"].copy()pronosticos = data["pronosticos"].copy()resultados = data["resultados"].copy()bonus_resp = data["bonus_resp"].copy()
 
 puntos_cols = [
     "participante", "partido_id", "fase", "acierto_resultado", "exacto",
@@ -1247,16 +350,16 @@ bonus_df = pd.DataFrame(bonus_rows, columns=bonus_cols).drop_duplicates(
     subset=["participante", "partido_id"], keep="last"
 )
 return puntos_df, bonus_df
-def save_admin_results_batch(partidos_block: pd.DataFrame, draft: dict, resultados_df: pd.DataFrame):
-resultados_df = ensure_columns(resultados_df, ["partido_id", "marcador_local", "marcador_visitante", "fecha_guardado_iso"])
-resultados_df["partido_id"] = resultados_df["partido_id"].astype(str).str.strip()
-ts = now_mx().isoformat()
+
+def save_admin_results_batch(partidos_block: pd.DataFrame, draft: dict, resultados_df: pd.DataFrame):resultados_df = ensure_columns(resultados_df, ["partido_id", "marcador_local", "marcador_visitante", "fecha_guardado_iso"])resultados_df["partido_id"] = resultados_df["partido_id"].astype(str).str.strip()ts = now_mx().isoformat()
 
 for _, row in partidos_block.iterrows():
     pid = normalize_text(row.get("partido_id"))
     if pid not in draft:
         continue
+
 Solo guardar partidos marcados explícitamente por el admin
+
     if not draft[pid].get("guardar"):
         continue
 
@@ -1280,14 +383,8 @@ write_sheet(SHEET_RESULTADOS, resultados_df)
 return resultados_df
 
 
-def save_user_predictions_batch(participante: str, partidos_block: pd.DataFrame, draft: dict, pronosticos_df: pd.DataFrame):
-pronosticos_df = ensure_columns(
-pronosticos_df,
-["participante", "partido_id", "marcador_local", "marcador_visitante", "fecha_guardado_iso"],
-)
-pronosticos_df["participante"] = pronosticos_df["participante"].astype(str).str.strip()
-pronosticos_df["partido_id"] = pronosticos_df["partido_id"].astype(str).str.strip()
-ts = now_mx().isoformat()
+
+def save_user_predictions_batch(participante: str, partidos_block: pd.DataFrame, draft: dict, pronosticos_df: pd.DataFrame):pronosticos_df = ensure_columns(pronosticos_df,["participante", "partido_id", "marcador_local", "marcador_visitante", "fecha_guardado_iso"],)pronosticos_df["participante"] = pronosticos_df["participante"].astype(str).str.strip()pronosticos_df["partido_id"] = pronosticos_df["partido_id"].astype(str).str.strip()ts = now_mx().isoformat()
 
 for _, row in partidos_block.iterrows():
     pid = normalize_text(row.get("partido_id"))
@@ -1308,11 +405,8 @@ for _, row in partidos_block.iterrows():
 
 pronosticos_df = pronosticos_df.drop_duplicates(subset=["participante", "partido_id"], keep="last")
 write_sheet(SHEET_PRONOSTICOS, pronosticos_df)
-def save_bonus_answers_batch(participante: str, partidos_bonus: pd.DataFrame, draft: dict, bonus_df: pd.DataFrame):
-bonus_df = ensure_columns(bonus_df, ["participante", "partido_id", "respuesta", "fecha_guardado_iso"])
-bonus_df["participante"] = bonus_df["participante"].astype(str).str.strip()
-bonus_df["partido_id"] = bonus_df["partido_id"].astype(str).str.strip()
-ts = now_mx().isoformat()
+
+def save_bonus_answers_batch(participante: str, partidos_bonus: pd.DataFrame, draft: dict, bonus_df: pd.DataFrame):bonus_df = ensure_columns(bonus_df, ["participante", "partido_id", "respuesta", "fecha_guardado_iso"])bonus_df["participante"] = bonus_df["participante"].astype(str).str.strip()bonus_df["partido_id"] = bonus_df["partido_id"].astype(str).str.strip()ts = now_mx().isoformat()
 
 for _, row in partidos_bonus.iterrows():
     pid = normalize_text(row.get("partido_id"))
@@ -1333,15 +427,8 @@ for _, row in partidos_bonus.iterrows():
 bonus_df = bonus_df.drop_duplicates(subset=["participante", "partido_id"], keep="first")
 write_sheet(SHEET_BONUS_RESP, bonus_df)
 clear_data_cache()
-def save_favoritos(participantes_df: pd.DataFrame, participante: str, favoritos: list[str]):
-participantes_df = read_sheet(
-SHEET_PARTICIPANTES,
-["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],
-)
-participantes_df = ensure_columns(
-participantes_df,
-["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],
-)
+
+def save_favoritos(participantes_df: pd.DataFrame, participante: str, favoritos: list[str]):participantes_df = read_sheet(SHEET_PARTICIPANTES,["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],)participantes_df = ensure_columns(participantes_df,["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],)
 
 if participantes_df.empty:
     raise RuntimeError("Protección activada: no se puede sobrescribir una hoja participantes vacía.")
@@ -1355,15 +442,8 @@ participantes_df.loc[mask, "fecha_envio"] = now_mx().strftime("%d/%m/%Y %H:%M")
 participantes_df.loc[mask, "fecha_envio_iso"] = now_mx().isoformat()
 write_sheet(SHEET_PARTICIPANTES, participantes_df)
 clear_data_cache()
-def create_user(participantes_df: pd.DataFrame, nombre: str, clave: str):
-participantes_df = read_sheet(
-SHEET_PARTICIPANTES,
-["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],
-)
-participantes_df = ensure_columns(
-participantes_df,
-["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],
-)
+
+def create_user(participantes_df: pd.DataFrame, nombre: str, clave: str):participantes_df = read_sheet(SHEET_PARTICIPANTES,["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],)participantes_df = ensure_columns(participantes_df,["nombre", "clave", "favoritos_guardados_json", "fecha_envio", "fecha_envio_iso", "es_admin"],)
 
 if participantes_df.empty:
     raise RuntimeError("Protección activada: no se puede sobrescribir una hoja participantes vacía.")
@@ -1380,23 +460,10 @@ if not existing.empty:
 participantes_df.loc[len(participantes_df)] = [nombre, clave, "[]", "", "", "0"]
 write_sheet(SHEET_PARTICIPANTES, participantes_df)
 clear_data_cache()
-def save_config_visibility(config_df: pd.DataFrame, visible: bool):
-config_df = upsert_config_value(config_df, "ver_pronosticos_ajenos", "1" if visible else "0")
-write_sheet(SHEET_CONFIG, config_df)
-clear_data_cache()
 
-def save_bonus_setup(partidos_df: pd.DataFrame, partido_id: str, pregunta: str, opciones: list[str], puntos: int):
-partidos_df = ensure_columns(
-partidos_df,
-[
-"partido_id", "fase", "grupo", "fecha", "hora", "ciudad", "estadio",
-"local", "visitante", "deadline_iso", "bonus_habilitado", "bonus_pregunta",
-"bonus_opciones_json", "bonus_puntos", "bonus_respuesta_correcta", "activo",
-],
-)
-mask = partidos_df["partido_id"].astype(str).str.strip().eq(str(partido_id).strip())
-if not mask.any():
-raise RuntimeError("Partido no encontrado.")
+def save_config_visibility(config_df: pd.DataFrame, visible: bool):config_df = upsert_config_value(config_df, "ver_pronosticos_ajenos", "1" if visible else "0")write_sheet(SHEET_CONFIG, config_df)clear_data_cache()
+
+def save_bonus_setup(partidos_df: pd.DataFrame, partido_id: str, pregunta: str, opciones: list[str], puntos: int):partidos_df = ensure_columns(partidos_df,["partido_id", "fase", "grupo", "fecha", "hora", "ciudad", "estadio","local", "visitante", "deadline_iso", "bonus_habilitado", "bonus_pregunta","bonus_opciones_json", "bonus_puntos", "bonus_respuesta_correcta", "activo",],)mask = partidos_df["partido_id"].astype(str).str.strip().eq(str(partido_id).strip())if not mask.any():raise RuntimeError("Partido no encontrado.")
 
 partidos_df.loc[mask, "bonus_habilitado"] = "1"
 partidos_df.loc[mask, "bonus_pregunta"] = pregunta.strip()
@@ -1405,18 +472,8 @@ partidos_df.loc[mask, "bonus_puntos"] = str(int(puntos))
 partidos_df.loc[mask, "bonus_respuesta_correcta"] = ""
 write_sheet(SHEET_PARTIDOS, partidos_df)
 clear_data_cache()
-def save_bonus_correct_answer(partidos_df: pd.DataFrame, partido_id: str, respuesta_correcta: str):
-partidos_df = ensure_columns(
-partidos_df,
-[
-"partido_id", "fase", "grupo", "fecha", "hora", "ciudad", "estadio",
-"local", "visitante", "deadline_iso", "bonus_habilitado", "bonus_pregunta",
-"bonus_opciones_json", "bonus_puntos", "bonus_respuesta_correcta", "activo",
-],
-)
-mask = partidos_df["partido_id"].astype(str).str.strip().eq(str(partido_id).strip())
-if not mask.any():
-raise RuntimeError("Bonus activo no encontrado.")
+
+def save_bonus_correct_answer(partidos_df: pd.DataFrame, partido_id: str, respuesta_correcta: str):partidos_df = ensure_columns(partidos_df,["partido_id", "fase", "grupo", "fecha", "hora", "ciudad", "estadio","local", "visitante", "deadline_iso", "bonus_habilitado", "bonus_pregunta","bonus_opciones_json", "bonus_puntos", "bonus_respuesta_correcta", "activo",],)mask = partidos_df["partido_id"].astype(str).str.strip().eq(str(partido_id).strip())if not mask.any():raise RuntimeError("Bonus activo no encontrado.")
 
 if not normalize_text(respuesta_correcta):
     raise RuntimeError("Debes seleccionar la respuesta correcta.")
@@ -1424,22 +481,12 @@ if not normalize_text(respuesta_correcta):
 partidos_df.loc[mask, "bonus_respuesta_correcta"] = respuesta_correcta.strip()
 write_sheet(SHEET_PARTIDOS, partidos_df)
 clear_data_cache()
-def recalculate_and_save_all_points(data: dict):
-puntos_df, bonus_df = recompute_points(data)
-write_sheet(SHEET_PUNTOS, puntos_df)
-write_sheet(SHEET_BONUS_PUNTOS, bonus_df)
+
+def recalculate_and_save_all_points(data: dict):puntos_df, bonus_df = recompute_points(data)write_sheet(SHEET_PUNTOS, puntos_df)write_sheet(SHEET_BONUS_PUNTOS, bonus_df)
 
 
 
-def sidebar_nav():
-st.sidebar.image("tricolor.png", use_container_width=True)
-st.sidebar.markdown("---")
-st.sidebar.title("Menú")
-options = ["INICIO", "RESULTADOS OFICIALES FIFA", "TABLA GENERAL DE PARTICIPANTES", "BONUS"]
-if st.session_state.is_admin:
-options.insert(1, "ADMINISTRACIÓN")
-else:
-options.insert(1, "CAPTURA DE PRONÓSTICOS")
+def sidebar_nav():st.sidebar.image("tricolor.png", use_container_width=True)st.sidebar.markdown("---")st.sidebar.title("Menú")options = ["INICIO", "RESULTADOS OFICIALES FIFA", "TABLA GENERAL DE PARTICIPANTES", "BONUS"]if st.session_state.is_admin:options.insert(1, "ADMINISTRACIÓN")else:options.insert(1, "CAPTURA DE PRONÓSTICOS")
 
 if st.session_state.get("nav_radio") not in options:
     st.session_state.nav_radio = st.session_state.nav if st.session_state.nav in options else options[0]
@@ -1480,10 +527,8 @@ if st.sidebar.button("Cerrar sesión", use_container_width=True):
         if k in st.session_state:
             del st.session_state[k]
     st.rerun()
-def render_inicio(config_map: dict):
-st.title("INICIO")
-st.subheader("Cómo funciona la quiniela")
-st.write("Cada participante captura sus pronósticos por fase.")
+
+def render_inicio(config_map: dict):st.title("INICIO")st.subheader("Cómo funciona la quiniela")st.write("Cada participante captura sus pronósticos por fase.")
 
 st.markdown("### Puntos base")
 st.write("Aciertas ganador o empate: **1 punto**")
@@ -1506,9 +551,8 @@ st.write("Las preguntas bonus quedan fijas una vez guardadas.")
 visible = to_bool(config_map.get("ver_pronosticos_ajenos", "0"))
 st.markdown("### Transparencia")
 st.write(f"Actualmente {'sí' if visible else 'no'} está habilitada la visualización de pronósticos de otros participantes.")
-def render_admin(data: dict):
-st.title("ADMINISTRACIÓN")
-tab1, tab2, tab3, tab4 = st.tabs(["Usuarios", "Calendario", "Configuración", "Bonus"])
+
+def render_admin(data: dict):st.title("ADMINISTRACIÓN")tab1, tab2, tab3, tab4 = st.tabs(["Usuarios", "Calendario", "Configuración", "Bonus"])
 
 with tab1:
     st.subheader("Alta de participantes")
@@ -1674,10 +718,8 @@ with tab4:
                     st.rerun()
                 except Exception as e:
                     st.error(str(e))
-def render_official_results(data: dict):
-st.title("RESULTADOS OFICIALES FIFA")
-partidos = data["partidos"].copy()
-resultados = data["resultados"].copy()
+
+def render_official_results(data: dict):st.title("RESULTADOS OFICIALES FIFA")partidos = data["partidos"].copy()resultados = data["resultados"].copy()
 
 if partidos.empty:
     st.info("Aún no hay calendario cargado.")
@@ -1775,11 +817,8 @@ if st.button("Guardar resultados oficiales de este bloque", use_container_width=
  
     except Exception as e:
          st.error(str(e))
-def get_user_predictions_view(data: dict, participante: str) -> pd.DataFrame:
-partidos = data["partidos"].copy()
-pron = data["pronosticos"].copy()
-puntos = data["puntos"].copy()
-bonus = data["bonus_puntos"].copy()
+
+def get_user_predictions_view(data: dict, participante: str) -> pd.DataFrame:partidos = data["partidos"].copy()pron = data["pronosticos"].copy()puntos = data["puntos"].copy()bonus = data["bonus_puntos"].copy()
 
 partidos["partido_id"] = partidos["partido_id"].astype(str).str.strip()
 pron["partido_id"] = pron["partido_id"].astype(str).str.strip()
@@ -1801,8 +840,8 @@ df = df.merge(
     how="left",
 )
 return sort_partidos_df(df)
-def render_predictions_capture(data: dict):
-st.title("CAPTURA DE PRONÓSTICOS")
+
+def render_predictions_capture(data: dict):st.title("CAPTURA DE PRONÓSTICOS")
 
 partidos = sort_partidos_df(data["partidos"].copy())
 pron = data["pronosticos"].copy()
@@ -1914,8 +953,8 @@ if st.button("Guardar pronósticos de este bloque", use_container_width=True, di
         st.rerun()
     except Exception as e:
         st.error(str(e))
-def render_tabla_general(data: dict):
-st.title("TABLA GENERAL DE PARTICIPANTES")
+
+def render_tabla_general(data: dict):st.title("TABLA GENERAL DE PARTICIPANTES")
 
 participantes = get_participantes_solo_usuarios(data["participantes"])
 puntos = data["puntos"].copy()
@@ -1964,8 +1003,8 @@ if visible or st.session_state.is_admin:
         st.dataframe(detalle[cols_exist], use_container_width=True, hide_index=True)
 else:
     st.info("La visualización de pronósticos de otros participantes aún no está habilitada.")
-def render_bonus(data: dict):
-st.title("BONUS")
+
+def render_bonus(data: dict):st.title("BONUS")
 
 partidos = sort_partidos_df(data["partidos"].copy())
 bonus_resp = data["bonus_resp"].copy()
@@ -2102,8 +1141,8 @@ else:
             use_container_width=True,
             hide_index=True,
         )
-def main():
-init_state()
+
+def main():init_state()
 
 if get_conn() is None:
     st.title("Quiniela Mundial 2026")
@@ -2144,8 +1183,5 @@ elif st.session_state.nav == "TABLA GENERAL DE PARTICIPANTES":
     render_tabla_general(data)
 elif st.session_state.nav == "BONUS":
     render_bonus(data)
-if name == "main":
-main()
 
-
-
+if name == "main":main()
