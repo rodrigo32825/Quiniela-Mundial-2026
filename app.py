@@ -1474,8 +1474,8 @@ def render_bonus(data: dict):
                 prev_val = normalize_text(prev.iloc[0].get("respuesta")) if not prev.empty else ""
                 ya_respondio = bool(prev_val)
                 fase = normalize_text(row.get("fase"))
-                fase_cerrada = is_phase_closed(partidos, fase)
-                bloqueado = fase_cerrada or ya_respondio
+                fase_cerrada = false
+                bloqueado = ya_respondio
 
                 st.markdown(f"## {row['local']} vs {row['visitante']}")
                 st.caption(f"{row['fase']} | Grupo {row['grupo']} | {row['fecha']} {row['hora']}")
@@ -1528,7 +1528,7 @@ def render_bonus(data: dict):
                         prev = bonus_resp_user[bonus_resp_user["partido_id"] == pid]
                         ya_respondio = not prev.empty and normalize_text(prev.iloc[0].get("respuesta")) != ""
 
-                        if not is_phase_closed(partidos, fase) and not ya_respondio:
+                        if not ya_respondio:
                             abiertos.append(row)
 
                     abiertos_df = pd.DataFrame(abiertos) if abiertos else bonus_pendientes.iloc[0:0].copy()
