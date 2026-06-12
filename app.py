@@ -1474,7 +1474,7 @@ def render_bonus(data: dict):
                 prev_val = normalize_text(prev.iloc[0].get("respuesta")) if not prev.empty else ""
                 ya_respondio = bool(prev_val)
                 fase = normalize_text(row.get("fase"))
-                fase_cerrada = false
+                fase_cerrada = False
                 bloqueado = ya_respondio
 
                 st.markdown(f"## {row['local']} vs {row['visitante']}")
