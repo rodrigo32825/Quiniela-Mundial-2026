@@ -1378,6 +1378,60 @@ def render_tabla_general(data: dict):
         if participantes_list:
             participante_sel = st.selectbox("Participante", options=participantes_list)
             detalle = get_user_predictions_view(data, participante_sel)
+
+            
+
+
+            row_participante = participantes[
+                participantes["nombre"].astype(str).str.strip() == participante_sel
+            ]
+
+            if not row_participante.empty:
+                favoritos = safe_json_load(
+                    row_participante.iloc[0].get("favoritos_guardados_json"),
+                    []
+                )
+
+                favoritos_df = pd.DataFrame(
+                    [{
+                        "Favorito 1": favoritos[0] if len(favoritos) > 0 else "",
+                        "Favorito 2": favoritos[1] if len(favoritos) > 1 else "",
+                    }]
+            )    
+
+            st.markdown("### Equipos favoritos")
+            st.dataframe(
+                favoritos_df,
+                use_container_width=True,
+                hide_index=True,
+            )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            
+
+            
+
+
+
+            
             cols = [
                 "fase", "grupo", "fecha", "hora", "local", "visitante", "marcador_local",
                 "marcador_visitante", "puntos_base", "puntos_favorito", "total_partido", "puntos_bonus",
