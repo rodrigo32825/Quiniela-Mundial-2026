@@ -1532,9 +1532,25 @@ def render_bonus(data: dict):
                             abiertos.append(row)
 
                     abiertos_df = pd.DataFrame(abiertos) if abiertos else bonus_pendientes.iloc[0:0].copy()
+                    
                     save_bonus_answers_batch(user, abiertos_df, st.session_state.draft_bonus, data["bonus_resp"])
-                    st.success("Respuestas bonus guardadas.")
+                    # Limpiar borrador local para que ya no parezca editable después de guardar
+                    st.session_state.draft_bonus = {}
+
+                    # Forzar recarga de datos desde Sheets
+                    load_all_data_cached.clear()
+                    st.session_state.data_nonce = st.session_state.get("data_nonce", 0) + 1
+
+                    st.success("Respuestas bonus guardadas. Tu respuesta quedó bloqueada.")
                     st.rerun()
+
+
+
+
+
+
+
+                
                 except Exception as e:
                     st.error(str(e))
         else:
