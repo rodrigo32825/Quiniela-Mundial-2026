@@ -176,8 +176,8 @@ def get_active_bonus_df(partidos_df: pd.DataFrame) -> pd.DataFrame:
     df = partidos_df.copy()
     df["partido_id"] = df["partido_id"].astype(str).str.strip()
     df = df[
-        df["bonus_habilitado"].astype(str).apply(to_bool)
-        & df["bonus_pregunta"].astype(str).str.strip().ne("")
+
+        df["bonus_pregunta"].astype(str).str.strip().ne("")
     ].copy()
     if df.empty:
         return df
@@ -1474,8 +1474,9 @@ def render_bonus(data: dict):
                 prev_val = normalize_text(prev.iloc[0].get("respuesta")) if not prev.empty else ""
                 ya_respondio = bool(prev_val)
                 fase = normalize_text(row.get("fase"))
+                bonus_abierto = to_bool(row.get("bonus_habilitado"))
                 fase_cerrada = False
-                bloqueado = ya_respondio
+                bloqueado = ya_respondio or not bonus_abierto
 
                 st.markdown(f"## {row['local']} vs {row['visitante']}")
                 st.caption(f"{row['fase']} | Grupo {row['grupo']} | {row['fecha']} {row['hora']}")
@@ -1498,6 +1499,8 @@ def render_bonus(data: dict):
 
                 if ya_respondio:
                     st.success(f"Tu respuesta quedó guardada y bloqueada: {prev_val}")
+                elif not bonus_abierto:
+                    st.warning("Este bonus ya fue cerrado por el administrador. Ya no se permiten respuestas.")
                 elif fase_cerrada:
                     st.caption("Este bonus ya cerró por fecha mínima de la fase. Ya no admite respuestas.")
 
@@ -1528,9 +1531,11 @@ def render_bonus(data: dict):
                         prev = bonus_resp_user[bonus_resp_user["partido_id"] == pid]
                         ya_respondio = not prev.empty and normalize_text(prev.iloc[0].get("respuesta")) != ""
 
-                        if not ya_respondio:
-                            abiertos.append(row)
+                        bonus_abierto = to_bool(row.get("bonus_habilitado"))
 
+                        if bonus_abierto and not ya_respondio:
+                            abiertos.append(row)
+                    
                     abiertos_df = pd.DataFrame(abiertos) if abiertos else bonus_pendientes.iloc[0:0].copy()
                     
                     save_bonus_answers_batch(user, abiertos_df, st.session_state.draft_bonus, data["bonus_resp"])
