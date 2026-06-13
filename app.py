@@ -1480,6 +1480,7 @@ def render_bonus(data: dict):
 
                 st.markdown(f"## {row['local']} vs {row['visitante']}")
                 st.caption(f"{row['fase']} | Grupo {row['grupo']} | {row['fecha']} {row['hora']}")
+                st.write(f"**Puntos bonus:** {normalize_text(row.get('bonus_puntos'))}")
                 st.write(normalize_text(row.get("bonus_pregunta")))
 
                 if opciones:
