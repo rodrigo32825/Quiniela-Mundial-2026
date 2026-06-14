@@ -840,6 +840,78 @@ def recalculate_and_save_all_points(data: dict):
     write_sheet(SHEET_BONUS_PUNTOS, bonus_df)
 
 
+def recalculate_and_save_bonus_only(data: dict):
+    participantes = get_participantes_solo_usuarios(data["participantes"])
+    partidos = data["partidos"].copy()
+    bonus_resp = data["bonus_resp"].copy() 
+
+    bonus_cols = ["participante", "partido_id", "puntos_bonus", "fecha_calculo_iso"]
+    
+    if partidos.empty or bonus_resp.empty:
+        write_sheet(SHEET_BONUS_PUNTOS, pd.DataFrame(columns=bonus_cols))
+        return
+
+    participantes_validos = participantes["nombre"].astype(str).str.strip().tolist()
+
+    partidos["partido_id"] = partidos["partido_id"].astype(str).str.strip()
+    bonus_resp["partido_id"] = bonus_resp["partido_id"].astype(str).str.strip()
+    bonus_resp["participante"] = bonus_resp["participante"].astype(str).str.strip()
+
+    ts = now_mx().isoformat()
+    bonus_rows = []
+
+
+    for _, row in bonus_resp.iterrows():
+        participante = normalize_text(row.get("participante"))
+
+        if participante not in participantes_validos:
+            continue
+
+        partido_id = normalize_text(row.get("partido_id"))
+        respuesta = normalize_text(row.get("respuesta"))
+
+        match = partidos[partidos["partido_id"] == partido_id]
+
+        if match.empty:
+            continue
+
+        p_row = match.iloc[0]
+
+        correcta = normalize_text(p_row.get("bonus_respuesta_correcta"))
+        bonus_pts = normalize_int(p_row.get("bonus_puntos"), 0) or 0
+
+        otorgado = bonus_pts if correcta and respuesta == correcta else 0
+
+        bonus_rows.append(
+
+            {
+
+                "participante": participante,
+                "partido_id": partido_id,
+                "puntos_bonus": str(otorgado),
+                "fecha_calculo_iso": ts,
+            }
+        )
+
+
+    bonus_df = pd.DataFrame(bonus_rows, columns=bonus_cols).drop_duplicates(
+        subset=["participante", "partido_id"],
+        keep="last"
+    )
+
+    write_sheet(SHEET_BONUS_PUNTOS, bonus_df)
+
+    
+
+
+
+
+
+
+
+
+
+
 
 def sidebar_nav():
     st.sidebar.image("tricolor.png", use_container_width=True)
@@ -1087,8 +1159,10 @@ def render_admin(data: dict):
                         st.session_state.data_nonce = st.session_state.get("data_nonce", 0) + 1
 
                         data_fresco = load_all_data_cached(st.session_state.data_nonce)
+                       
                         recalculate_and_save_all_points(data_fresco)
-
+                        recalculate_and_save_bonus_only(data_fresco)
+                        
                         st.success("Bonus resuelto y puntos recalculados.")
                         st.rerun()
                     except Exception as e:
