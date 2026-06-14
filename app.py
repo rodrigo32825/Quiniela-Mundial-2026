@@ -1083,11 +1083,20 @@ def render_admin(data: dict):
                 if st.button("Guardar respuesta correcta y recalcular bonus", use_container_width=True):
                     try:
                         save_bonus_correct_answer(data["partidos"], bonus_pid, respuesta_correcta)
-                        recalculate_and_save_all_points(load_all_data_cached(st.session_state.get("data_nonce", 0)))
+                        load_all_data_cached.clear()
+                        st.session_state.data_nonce = st.session_state.get("data_nonce", 0) + 1
+
+                        data_fresco = load_all_data_cached(st.session_state.data_nonce)
+                        recalculate_and_save_all_points(data_fresco)
+
                         st.success("Bonus resuelto y puntos recalculados.")
                         st.rerun()
                     except Exception as e:
                         st.error(str(e))
+
+
+
+
 
 
 def render_official_results(data: dict):
