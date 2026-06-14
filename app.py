@@ -616,8 +616,7 @@ def recompute_points(data: dict):
                 continue
 
             p_row = match.iloc[0]
-            if not to_bool(p_row.get("bonus_habilitado")):
-                continue
+          
 
             correcta = normalize_text(p_row.get("bonus_respuesta_correcta"))
             bonus_pts = normalize_int(p_row.get("bonus_puntos"), 0) or 0
