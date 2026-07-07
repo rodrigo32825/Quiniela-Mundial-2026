@@ -1455,9 +1455,9 @@ def render_tabla_general(data: dict):
         resumen.insert(0, "Posición", range(1, len(resumen) + 1))
 
         medallas = {
-            1: "🥇",
-            2: "🥈",
-            3: "🥉",
+            1: "🥇 $5,320.00",
+            2: "🥈 $2,280.00",
+            3: "🥉 $  760.00",
         }
     
         resumen["Posición"] = resumen["Posición"].apply(
