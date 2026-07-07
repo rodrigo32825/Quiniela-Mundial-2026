@@ -1467,7 +1467,7 @@ resumen["Posición"] = resumen["Posición"].apply(
 
 
     
-    st.dataframe(resumen, use_container_width=True, hide_index=True)
+st.dataframe(resumen, use_container_width=True, hide_index=True)
 
     if visible or st.session_state.is_admin:
         st.markdown("### Ver pronósticos de un participante")
