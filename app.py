@@ -1459,10 +1459,10 @@ def render_tabla_general(data: dict):
             2: "🥈",
             3: "🥉",
         }
-
-resumen["Posición"] = resumen["Posición"].apply(
-    lambda x: f"{medallas.get(x, '')} {x}"
-)
+    
+        resumen["Posición"] = resumen["Posición"].apply(
+            lambda x: f"{medallas.get(x, '')} {x}"
+        )
 
 
 
