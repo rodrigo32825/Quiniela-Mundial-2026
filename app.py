@@ -1461,7 +1461,7 @@ def render_tabla_general(data: dict):
         }
     
         resumen["Posición"] = resumen["Posición"].apply(
-            lambda x: f"{medallas.get(x, '')} {x}"
+            lambda x: f"{medallas.get(x, x)
         )
 
 
