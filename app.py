@@ -1467,7 +1467,7 @@ def render_tabla_general(data: dict):
 
 
     
-    st.dataframe(resumen, use_container_width=True, hide_index=True)
+        st.dataframe(resumen, use_container_width=True, hide_index=True)
 
         if visible or st.session_state.is_admin:
         st.markdown("### Ver pronósticos de un participante")
