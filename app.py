@@ -1453,6 +1453,20 @@ def render_tabla_general(data: dict):
     if not resumen.empty:
         resumen = resumen.sort_values(by=["Total Puntos Ganados", "Puntos Base ganados"], ascending=False).reset_index(drop=True)
         resumen.insert(0, "Posición", range(1, len(resumen) + 1))
+
+        medallas = {
+            1: "🥇",
+            2: "🥈",
+            3: "🥉",
+        }
+
+resumen["Posición"] = resumen["Posición"].apply(
+    lambda x: f"{medallas.get(x, '')} {x}"
+)
+
+
+
+    
     st.dataframe(resumen, use_container_width=True, hide_index=True)
 
     if visible or st.session_state.is_admin:
