@@ -1608,6 +1608,10 @@ def render_bonus(data: dict):
                         "respuesta": "Respuesta",
                         "fecha_guardado_iso": "Fecha de guardado",
                     })
+                   
+                    
+                if not bonus_abierto:
+                    
                     st.markdown("### Respuestas registradas")
                     st.dataframe(
                         respuestas_bonus[["Participante", "Respuesta", "Fecha de guardado"]],
@@ -1615,7 +1619,7 @@ def render_bonus(data: dict):
                         hide_index=True,
                     )
                 else:
-                    st.info("Aún no hay respuestas registradas para este bonus.")
+                    st.info("🔒 Las respuestas se mostrarán cuando el bonus sea cerrado.")
 
                 st.divider()
 
