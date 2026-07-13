@@ -940,9 +940,9 @@ def sidebar_nav():
 
     if st.session_state.is_admin:
         if st.sidebar.button("Actualizar datos desde Sheets", use_container_width=True):
-            #load_all_data_cached.clear()
-            #st.session_state.data_nonce = st.session_state.get("data_nonce", 0) + 1
-            #st.rerun()
+            load_all_data_cached.clear()
+            st.session_state.data_nonce = st.session_state.get("data_nonce", 0) + 1
+            st.rerun()
     
 
     if st.sidebar.button("Cerrar sesión", use_container_width=True):
@@ -1644,8 +1644,8 @@ def render_bonus(data: dict):
                     st.session_state.draft_bonus = {}
 
                     # Forzar recarga de datos desde Sheets
-                    load_all_data_cached.clear()
-                    st.session_state.data_nonce = st.session_state.get("data_nonce", 0) + 1
+                    #load_all_data_cached.clear()
+                    #st.session_state.data_nonce = st.session_state.get("data_nonce", 0) + 1
 
                     st.success("Respuestas bonus guardadas. Tu respuesta quedó bloqueada.")
                     st.rerun()
