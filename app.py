@@ -1568,6 +1568,8 @@ def render_bonus(data: dict):
                 opciones = safe_json_load(row.get("bonus_opciones_json"), [])
                 prev = bonus_resp_user[bonus_resp_user["partido_id"] == pid]
                 prev_val = normalize_text(prev.iloc[0].get("respuesta")) if not prev.empty else ""
+                if not prev_val:
+                    prev_val = normalize_text(st.session_state.get(f"bonus_guardado_{pid}", ""))
                 ya_respondio = bool(prev_val)
                 fase = normalize_text(row.get("fase"))
                 bonus_abierto = to_bool(row.get("bonus_habilitado"))
@@ -1640,6 +1642,11 @@ def render_bonus(data: dict):
                     abiertos_df = pd.DataFrame(abiertos) if abiertos else bonus_pendientes.iloc[0:0].copy()
                     
                     save_bonus_answers_batch(user, abiertos_df, st.session_state.draft_bonus, data["bonus_resp"])
+                    for _, bonus_row in abiertos_df.iterrows():
+                        bonus_pid = normalize_text(bonus_row.get("partido_id"))
+                        st.session_state[f"bonus_guardado_{bonus_pid}"] = (
+                        st.session_state.draft_bonus.get(bonus_pid, "")
+                        )
                     # Limpiar borrador local para que ya no parezca editable después de guardar
                     st.session_state.draft_bonus = {}
 
