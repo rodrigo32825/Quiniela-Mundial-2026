@@ -1646,8 +1646,11 @@ def render_bonus(data: dict):
                     # Forzar recarga de datos desde Sheets
                     #load_all_data_cached.clear()
                     #st.session_state.data_nonce = st.session_state.get("data_nonce", 0) + 1
-
-                    st.success("Respuestas bonus guardadas. Tu respuesta quedó bloqueada.")
+                    st.session_state["bonus_guardado_ok"] = True
+                    # Recargamos la información desde Google Sheets
+                    load_all_data_cached.clear()
+                    
+                    st.session_state.data_nonce = st.session_state.get("data_nonce", 0) + 1
                     st.rerun()
 
 
