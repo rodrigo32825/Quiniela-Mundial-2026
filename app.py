@@ -1641,7 +1641,19 @@ def render_bonus(data: dict):
                     
                     abiertos_df = pd.DataFrame(abiertos) if abiertos else bonus_pendientes.iloc[0:0].copy()
                     
-                    save_bonus_answers_batch(user, abiertos_df, st.session_state.draft_bonus, data["bonus_resp"])
+                    bonus_resp_frescas = read_sheet(
+                        SHEET_BONUS_RESP,
+                        ["participante", "partido_id", "respuesta", "fecha_guardado_iso"],
+                        required=True,
+                    )
+
+                    save_bonus_answers_batch(
+                        user,
+                        abiertos_df,
+                        st.session_state.draft_bonus,
+                        bonus_resp_frescas,
+                    )    
+                        
                     for _, bonus_row in abiertos_df.iterrows():
                         bonus_pid = normalize_text(bonus_row.get("partido_id"))
                         st.session_state[f"bonus_guardado_{bonus_pid}"] = (
